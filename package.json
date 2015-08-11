@@ -1,0 +1,14 @@
+{
+  "name": "table",
+  "description": "2d multiplayer html5 tabletop simulator",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/thejoshwolfe/table.git"
+  },
+  "dependencies": {
+    "connect-static": "~1.5.0",
+    "express": "~4.13.3"
+  }
+}
