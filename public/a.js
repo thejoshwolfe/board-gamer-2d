@@ -1,7 +1,5 @@
 var canvas = document.getElementById("canvas");
-var cards = [
-  {x:100, y:100},
-];
+var cards = [];
 var mousedCard;
 var xstart;
 var ystart;
@@ -11,8 +9,8 @@ suImage.src = "su.png";
 suImage.addEventListener("load", function() {
   render();
 });
-function createCard(x,y){
-  cards.push({x:x, y:y});
+function createCard(x, y) {
+  sendCommand("createCard", {x:x, y:y});
 }
 canvas.addEventListener("mousedown", function(event){
   var x = eventToMouseX(event,canvas);
@@ -88,4 +86,61 @@ function render() {
   }
 }
 
-render();
+var socket;
+var isConnected = false;
+function connectToServer() {
+  var host = location.host;
+  var pathname = location.pathname;
+  var isHttps = location.protocol === "https:";
+  var match = host.match(/^(.+):(\d+)$/);
+  var defaultPort = isHttps ? 443 : 80;
+  var port = match ? parseInt(match[2], 10) : defaultPort;
+  var hostName = match ? match[1] : host;
+  var wsProto = isHttps ? "wss:" : "ws:";
+  var wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
+  socket = new WebSocket(wsUrl);
+  socket.addEventListener('open', onOpen, false);
+  socket.addEventListener('message', onMessage, false);
+  socket.addEventListener('error', timeoutThenCreateNew, false);
+  socket.addEventListener('close', timeoutThenCreateNew, false);
+
+  function onOpen() {
+    isConnected = true;
+    connectionEstablished();
+  }
+  function onMessage(event) {
+    var message = JSON.parse(event.data);
+    handleMessage(message);
+  }
+  function timeoutThenCreateNew() {
+    socket.removeEventListener('error', timeoutThenCreateNew, false);
+    socket.removeEventListener('close', timeoutThenCreateNew, false);
+    socket.removeEventListener('open', onOpen, false);
+    if (isConnected) {
+      isConnected = false;
+      connectionLost();
+    }
+    setTimeout(connectToServer, 1000);
+  }
+}
+
+function connectionEstablished() {
+  console.log("connected");
+}
+function connectionLost() {
+  console.log("disconnected");
+}
+function sendCommand(cmd, args) {
+  socket.send(JSON.stringify({cmd:"createCard", args:args}));
+}
+function handleMessage(message) {
+  switch (message.cmd) {
+    case "createCard":
+      cards.push(message.args);
+      render();
+      break;
+  }
+}
+
+
+connectToServer();
