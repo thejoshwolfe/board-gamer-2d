@@ -1,50 +1,50 @@
-var canvas = document.getElementById("canvas");
+var mainDiv = document.getElementById("mainDiv");
 var cards = [];
 var mousedCard;
 var xstart;
 var ystart;
 
-var suImage = new Image();
-suImage.src = "su.png";
-suImage.addEventListener("load", function() {
-  render();
-});
-function createCard(x, y) {
-  sendCommand("createCard", {x:x, y:y});
+function createCard(id, x, y) {
+  cards.push({id:id, x:x, y:y});
+  // create the html element, but don't position it until we call render()
+  var src = "su.png";
+  mainDiv.insertAdjacentHTML("beforeend",
+    '<img id="'+id+'" class="gameObject" src="'+src+'">');
 }
-canvas.addEventListener("mousedown", function(event){
-  var x = eventToMouseX(event,canvas);
-  var y = eventToMouseY(event,canvas);
-  if(event.button === 0){
-    for(var i = cards.length-1; i>=0;i--){
+mainDiv.addEventListener("mousedown", function(event) {
+  var x = eventToMouseX(event, mainDiv);
+  var y = eventToMouseY(event, mainDiv);
+  if (event.button === 0) {
+    for (var i = cards.length - 1; i >= 0; i--) {
       var card = cards[i];
-      if (x > card.x && x<card.x + deckProperties.width &&
-          y > card.y && y<card.y + deckProperties.height) {
+      if (x > card.x && x < card.x + deckProperties.width &&
+          y > card.y && y < card.y + deckProperties.height) {
         mousedCard = card;
         xstart = x;
         ystart = y;
-        cards.splice(i,1);
+        cards.splice(i, 1);
         cards.push(card);
         break;
       }
     }
   }
-  if(event.button === 2){
-    createCard(x,y);
+  if (event.button === 2) {
+    sendCommand("createCard", {id:generateRandomId(), x:x, y:y});
+    // TODO: also create it here and then don't recreate it when we get a notification.
   }
   event.preventDefault();
   render();
 });
-canvas.addEventListener("contextmenu", function(event){
+mainDiv.addEventListener("contextmenu", function(event) {
  event.preventDefault();
 });
-document.addEventListener("mouseup", function(event){
+document.addEventListener("mouseup", function(event) {
   mousedCard = null;
 });
-canvas.addEventListener("mousemove", function(event){
-  if(mousedCard != null){
-    var x = eventToMouseX(event,canvas);
-    var y = eventToMouseY(event,canvas);
+mainDiv.addEventListener("mousemove", function(event) {
+  if (mousedCard != null) {
+    var x = eventToMouseX(event, mainDiv);
+    var y = eventToMouseY(event, mainDiv);
     var dx = (x - xstart);
     var dy = (y - ystart);
     xstart = x;
@@ -55,34 +55,23 @@ canvas.addEventListener("mousemove", function(event){
   }
 });
 
-function eventToMouseX(event, canvas) { return event.clientX - canvas.getBoundingClientRect().left; }
-function eventToMouseY(event, canvas) { return event.clientY - canvas.getBoundingClientRect().top; }
+function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
+function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
-var cardProperties = {
-  cropX: 0,
-  cropY: 0,
-  cropW: 822,
-  cropH: 1122,
-};
 var deckProperties = {
   height: 110,
   width: 81,
 };
 
 function render() {
-  var context = canvas.getContext("2d");
-  context.fillStyle = "#0a0";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  if (suImage.complete) {
-    for(var i = 0; i<cards.length;i++){
-      context.drawImage(suImage,
-          cardProperties.cropX, cardProperties.cropY,
-          cardProperties.cropW, cardProperties.cropH,
-          cards[i].x, cards[i].y,
-          deckProperties.width, deckProperties.height
-      );
-    }
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    var cardImg = document.getElementById(card.id);
+    cardImg.style.width = deckProperties.width;
+    cardImg.style.height = deckProperties.height;
+    cardImg.style.left = card.x;
+    cardImg.style.top = card.y;
+    cardImg.style.zIndex = i;
   }
 }
 
@@ -136,11 +125,20 @@ function sendCommand(cmd, args) {
 function handleMessage(message) {
   switch (message.cmd) {
     case "createCard":
-      cards.push(message.args);
+      createCard(message.args.id, message.args.x, message.args.y);
       render();
       break;
   }
 }
 
+function generateRandomId() {
+  var result = "";
+  for (var i = 0; i < 16; i++) {
+    var n = Math.floor(Math.random() * 16);
+    var c = n.toString(16);
+    result += c;
+  }
+  return result;
+}
 
 connectToServer();
