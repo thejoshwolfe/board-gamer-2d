@@ -1,11 +1,15 @@
 var mainDiv = document.getElementById("mainDiv");
 var cards = [];
+var cardById = {};
 var mousedCard;
 var xstart;
 var ystart;
+var userName;
 
 function createCard(id, x, y) {
-  cards.push({id:id, x:x, y:y});
+  var card = {id:id, x:x, y:y};
+  cards.push(card);
+  cardById[id] = card;
   // create the html element, but don't position it until we call render()
   var src = "su.png";
   mainDiv.insertAdjacentHTML("beforeend",
@@ -29,8 +33,9 @@ mainDiv.addEventListener("mousedown", function(event) {
     }
   }
   if (event.button === 2) {
-    sendCommand("createCard", {id:generateRandomId(), x:x, y:y});
-    // TODO: also create it here and then don't recreate it when we get a notification.
+    var id = generateRandomId()
+    sendCommand("createCard", {id:id, x:x, y:y});
+    createCard(id, x, y);
   }
   event.preventDefault();
   render();
@@ -51,6 +56,7 @@ mainDiv.addEventListener("mousemove", function(event) {
     ystart = y;
     mousedCard.x += dx;
     mousedCard.y += dy;
+    sendCommand("moveCard", {id:mousedCard.id, x:mousedCard.x, y:mousedCard.y});
     render();
   }
 });
@@ -98,6 +104,7 @@ function connectToServer() {
     connectionEstablished();
   }
   function onMessage(event) {
+    console.log(event.data);
     var message = JSON.parse(event.data);
     handleMessage(message);
   }
@@ -120,14 +127,26 @@ function connectionLost() {
   console.log("disconnected");
 }
 function sendCommand(cmd, args) {
-  socket.send(JSON.stringify({cmd:"createCard", args:args}));
+  socket.send(JSON.stringify({cmd:cmd, args:args, user:userName}));
 }
 function handleMessage(message) {
+  if (message.user === userName) return;
   switch (message.cmd) {
     case "createCard":
       createCard(message.args.id, message.args.x, message.args.y);
       render();
       break;
+    case "moveCard":
+      var card = cardById[message.args.id];
+      card.x = message.args.x;
+      card.y = message.args.y;
+      render();
+      break;
+    case "login":
+      userName = message.args;
+      break;
+    default:
+      console.log("you broke it son.");
   }
 }
 
