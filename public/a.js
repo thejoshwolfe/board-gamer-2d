@@ -3,7 +3,7 @@ var cardsById = {};
 var mousedCard;
 var xstart;
 var ystart;
-var userName;
+var userName = null;
 var maxZ = 0;
 
 function createCard(id, x, y, z) {
@@ -14,6 +14,12 @@ function createCard(id, x, y, z) {
   var src = "su.png";
   mainDiv.insertAdjacentHTML("beforeend",
     '<img id="'+id+'" class="gameObject" src="'+src+'">');
+}
+function deleteEverything() {
+  mainDiv.innerHTML = "";
+  cardsById = {};
+  userName = null;
+  maxZ = 0;
 }
 mainDiv.addEventListener("mousedown", function(event) {
   var x = eventToMouseX(event, mainDiv);
@@ -149,9 +155,10 @@ function connectionEstablished() {
 }
 function connectionLost() {
   console.log("disconnected");
+  deleteEverything();
 }
 function sendCommand(cmd, args) {
-  socket.send(JSON.stringify({cmd:cmd, args:args, user:userName}));
+  socket.send(JSON.stringify({cmd:cmd, user:userName, args:args}));
 }
 function handleMessage(message) {
   if (message.user === userName) return;
