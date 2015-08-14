@@ -1,8 +1,5 @@
 var mainDiv = document.getElementById("mainDiv");
 var cardsById = {};
-var mousedCard;
-var xstart;
-var ystart;
 var userName = null;
 var maxZ = 0;
 
@@ -21,6 +18,12 @@ function deleteEverything() {
   userName = null;
   maxZ = 0;
 }
+
+var draggingCard;
+var draggingCardStartX;
+var draggingCardStartY;
+var draggingMouseStartX;
+var draggingMouseStartY;
 mainDiv.addEventListener("mousedown", function(event) {
   if (!isConnected) return;
   var x = eventToMouseX(event, mainDiv);
@@ -31,13 +34,14 @@ mainDiv.addEventListener("mousedown", function(event) {
       var card = cards[i];
       if (x > card.x && x < card.x + deckProperties.width &&
           y > card.y && y < card.y + deckProperties.height) {
-        mousedCard = card;
-        xstart = x;
-        ystart = y;
+        draggingCard = card;
+        draggingCardStartX = card.x;
+        draggingCardStartY = card.y;
+        draggingMouseStartX = x;
+        draggingMouseStartY = y;
         // bring to top
         maxZ++;
         card.z = maxZ;
-        cardWasMoved(card);
         break;
       }
     }
@@ -52,25 +56,25 @@ mainDiv.addEventListener("mousedown", function(event) {
   event.preventDefault();
   render();
 });
-mainDiv.addEventListener("contextmenu", function(event) {
- event.preventDefault();
-});
 document.addEventListener("mouseup", function(event) {
-  mousedCard = null;
+  if (draggingCard != null) {
+    cardWasMoved(draggingCard);
+    draggingCard = null;
+  }
 });
 mainDiv.addEventListener("mousemove", function(event) {
-  if (mousedCard != null) {
+  if (draggingCard != null) {
     var x = eventToMouseX(event, mainDiv);
     var y = eventToMouseY(event, mainDiv);
-    var dx = (x - xstart);
-    var dy = (y - ystart);
-    xstart = x;
-    ystart = y;
-    mousedCard.x += dx;
-    mousedCard.y += dy;
-    cardWasMoved(mousedCard);
+    var dx = x - draggingMouseStartX;
+    var dy = y - draggingMouseStartY;
+    draggingCard.x = draggingCardStartX + dx;
+    draggingCard.y = draggingCardStartY + dy;
     render();
   }
+});
+mainDiv.addEventListener("contextmenu", function(event) {
+ event.preventDefault();
 });
 
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
