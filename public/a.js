@@ -1,27 +1,36 @@
 var mainDiv = document.getElementById("mainDiv");
 var cardsById = {};
 var userName = null;
-var maxZ = 0;
 
 function createCard(id, x, y, z) {
   var card = {id:id, x:x, y:y, z:z};
   cardsById[id] = card;
-  maxZ = Math.max(maxZ, card.z);
   // create the html element, but don't position it until we call render()
   var src = "su.png";
-  mainDiv.insertAdjacentHTML("beforeend",
-    '<img id="'+id+'" class="gameObject" src="'+src+'">');
+  mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject" src="'+src+'">');
+  return card;
 }
 function deleteEverything() {
   mainDiv.innerHTML = "";
   cardsById = {};
   userName = null;
-  maxZ = 0;
+}
+function bringToTop(card) {
+  var cards = getCards();
+  if (cards[cards.length - 1] !== card) {
+    card.z = cards[cards.length - 1].z + 1;
+  }
+}
+function getNewTopCardZ() {
+  var cards = getCards();
+  if (cards.length === 0) return 0;
+  return cards[cards.length - 1].z + 1;
 }
 
 var draggingCard;
 var draggingCardStartX;
 var draggingCardStartY;
+var draggingCardStartZ;
 var draggingMouseStartX;
 var draggingMouseStartY;
 mainDiv.addEventListener("mousedown", function(event) {
@@ -37,28 +46,30 @@ mainDiv.addEventListener("mousedown", function(event) {
         draggingCard = card;
         draggingCardStartX = card.x;
         draggingCardStartY = card.y;
+        draggingCardStartZ = card.z;
         draggingMouseStartX = x;
         draggingMouseStartY = y;
         // bring to top
-        maxZ++;
-        card.z = maxZ;
+        bringToTop(card);
         break;
       }
     }
   }
   if (event.button === 2) {
     var id = generateRandomId()
-    maxZ++;
-    var z = maxZ;
-    sendCommand("createCard", {id:id, x:x, y:y, z:z});
-    createCard(id, x, y, z);
+    var card = createCard(id, x, y, getNewTopCardZ());
+    sendCommand("createCard", {id:card.id, x:card.x, y:card.y, z:card.z});
   }
   event.preventDefault();
   render();
 });
 document.addEventListener("mouseup", function(event) {
   if (draggingCard != null) {
-    cardWasMoved(draggingCard);
+    if (!(draggingCard.x === draggingCardStartX &&
+          draggingCard.y === draggingCardStartY &&
+          draggingCard.z === draggingCardStartZ)) {
+      cardWasMoved(draggingCard);
+    }
     draggingCard = null;
   }
 });
@@ -179,7 +190,6 @@ function handleMessage(message) {
       card.x = message.args.x;
       card.y = message.args.y;
       card.z = message.args.z;
-      maxZ = Math.max(maxZ, card.z);
       render();
       break;
     case "login":
