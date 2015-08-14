@@ -134,8 +134,10 @@ function connectToServer() {
     connectionEstablished();
   }
   function onMessage(event) {
-    console.log(event.data);
-    var message = JSON.parse(event.data);
+    var msg = event.data;
+    console.log(msg);
+    if (msg === "keepAlive") return;
+    var message = JSON.parse(msg);
     handleMessage(message);
   }
   function timeoutThenCreateNew() {
@@ -179,7 +181,7 @@ function handleMessage(message) {
       userName = message.args;
       break;
     default:
-      console.log("you broke it son.");
+      console.log("unknown command:", message.cmd);
   }
 }
 
