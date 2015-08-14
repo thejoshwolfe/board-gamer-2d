@@ -1,15 +1,15 @@
 var mainDiv = document.getElementById("mainDiv");
-var cards = [];
-var cardById = {};
+var cardsById = {};
 var mousedCard;
 var xstart;
 var ystart;
 var userName;
+var maxZ = 0;
 
-function createCard(id, x, y) {
-  var card = {id:id, x:x, y:y};
-  cards.push(card);
-  cardById[id] = card;
+function createCard(id, x, y, z) {
+  var card = {id:id, x:x, y:y, z:z};
+  cardsById[id] = card;
+  maxZ = Math.max(maxZ, card.z);
   // create the html element, but don't position it until we call render()
   var src = "su.png";
   mainDiv.insertAdjacentHTML("beforeend",
@@ -19,6 +19,7 @@ mainDiv.addEventListener("mousedown", function(event) {
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   if (event.button === 0) {
+    var cards = getCards();
     for (var i = cards.length - 1; i >= 0; i--) {
       var card = cards[i];
       if (x > card.x && x < card.x + deckProperties.width &&
@@ -26,16 +27,20 @@ mainDiv.addEventListener("mousedown", function(event) {
         mousedCard = card;
         xstart = x;
         ystart = y;
-        cards.splice(i, 1);
-        cards.push(card);
+        // bring to top
+        maxZ++;
+        card.z = maxZ;
+        cardWasMoved(card);
         break;
       }
     }
   }
   if (event.button === 2) {
     var id = generateRandomId()
-    sendCommand("createCard", {id:id, x:x, y:y});
-    createCard(id, x, y);
+    maxZ++;
+    var z = maxZ;
+    sendCommand("createCard", {id:id, x:x, y:y, z:z});
+    createCard(id, x, y, z);
   }
   event.preventDefault();
   render();
@@ -56,7 +61,7 @@ mainDiv.addEventListener("mousemove", function(event) {
     ystart = y;
     mousedCard.x += dx;
     mousedCard.y += dy;
-    sendCommand("moveCard", {id:mousedCard.id, x:mousedCard.x, y:mousedCard.y});
+    cardWasMoved(mousedCard);
     render();
   }
 });
@@ -70,6 +75,7 @@ var deckProperties = {
 };
 
 function render() {
+  var cards = getCards();
   for (var i = 0; i < cards.length; i++) {
     var card = cards[i];
     var cardImg = document.getElementById(card.id);
@@ -79,6 +85,24 @@ function render() {
     cardImg.style.top = card.y;
     cardImg.style.zIndex = i;
   }
+}
+
+function getCards() {
+  var cards = [];
+  for (var cardId in cardsById) {
+    cards.push(cardsById[cardId]);
+  }
+  cards.sort(compareZ);
+  return cards;
+}
+function compareZ(a, b) {
+  return operatorCompare(a.z, b.z);
+}
+function operatorCompare(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function cardWasMoved(card) {
+  sendCommand("moveCard", {id:card.id, x:card.x, y:card.y, z:card.z});
 }
 
 var socket;
@@ -133,13 +157,15 @@ function handleMessage(message) {
   if (message.user === userName) return;
   switch (message.cmd) {
     case "createCard":
-      createCard(message.args.id, message.args.x, message.args.y);
+      createCard(message.args.id, message.args.x, message.args.y, message.args.z);
       render();
       break;
     case "moveCard":
-      var card = cardById[message.args.id];
+      var card = cardsById[message.args.id];
       card.x = message.args.x;
       card.y = message.args.y;
+      card.z = message.args.z;
+      maxZ = Math.max(maxZ, card.z);
       render();
       break;
     case "login":
