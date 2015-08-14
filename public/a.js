@@ -22,6 +22,7 @@ function deleteEverything() {
   maxZ = 0;
 }
 mainDiv.addEventListener("mousedown", function(event) {
+  if (!isConnected) return;
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   if (event.button === 0) {
@@ -135,8 +136,8 @@ function connectToServer() {
   }
   function onMessage(event) {
     var msg = event.data;
-    console.log(msg);
     if (msg === "keepAlive") return;
+    console.log(msg);
     var message = JSON.parse(msg);
     handleMessage(message);
   }
