@@ -7,14 +7,11 @@ function initObjects() {
   objectsById = {};
   for (var id in gameDefinition.objects) {
     var objectDefinition = gameDefinition.objects[id];
-    var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
     var object = {
       id: id,
-      x: coordinateSystem.x + coordinateSystem.unitWidth * objectDefinition.x,
-      y: coordinateSystem.y + coordinateSystem.unitHeight * objectDefinition.y,
+      x: objectDefinition.x,
+      y: objectDefinition.y,
       z: objectDefinition.z,
-      width: coordinateSystem.unitWidth * objectDefinition.width,
-      height: coordinateSystem.unitHeight * objectDefinition.height,
     };
     objectsById[id] = object;
 
@@ -53,6 +50,8 @@ function onObjectMouseDown(event) {
   var objectId = this.id;
   var object = objectsById[objectId];
   if (getObjectDefinition(object).movable === false) return;
+
+  // begin drag
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   draggingObject = object;
@@ -61,7 +60,7 @@ function onObjectMouseDown(event) {
   draggingObjectStartZ = object.z;
   draggingMouseStartX = x;
   draggingMouseStartY = y;
-  // bring to top
+
   bringToTop(object);
   render(object);
 }
@@ -77,13 +76,25 @@ document.addEventListener("mouseup", function(event) {
 });
 mainDiv.addEventListener("mousemove", function(event) {
   if (draggingObject != null) {
+    var object = draggingObject;
+    // pixels
     var x = eventToMouseX(event, mainDiv);
     var y = eventToMouseY(event, mainDiv);
     var dx = x - draggingMouseStartX;
     var dy = y - draggingMouseStartY;
-    draggingObject.x = draggingObjectStartX + dx;
-    draggingObject.y = draggingObjectStartY + dy;
-    render(draggingObject);
+    // units
+    var objectDefinition = getObjectDefinition(object);
+    var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
+    var objectNewX = draggingObjectStartX + dx / coordinateSystem.unitWidth;
+    var objectNewY = draggingObjectStartY + dy / coordinateSystem.unitHeight;
+    if (objectDefinition.snapX != null) objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
+    if (objectDefinition.snapY != null) objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
+    if (!(object.x === objectNewX &&
+          object.y === objectNewY)) {
+      object.x = objectNewX;
+      object.y = objectNewY;
+      render(object);
+    }
   }
 });
 mainDiv.addEventListener("contextmenu", function(event) {
@@ -95,10 +106,12 @@ function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBound
 
 function render(object) {
   var objectImg = document.getElementById(object.id);
-  objectImg.style.width = object.width;
-  objectImg.style.height = object.height;
-  objectImg.style.left = object.x;
-  objectImg.style.top = object.y;
+  var objectDefinition = getObjectDefinition(object);
+  var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
+  objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
+  objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
+  objectImg.style.left = coordinateSystem.x + coordinateSystem.unitWidth * object.x;
+  objectImg.style.top = coordinateSystem.y + coordinateSystem.unitHeight * object.y;
   objectImg.style.zIndex = object.z;
 }
 
@@ -204,6 +217,16 @@ function generateRandomId() {
     result += c;
   }
   return result;
+}
+function roundToFactor(n, factor) {
+  // roundToFactor(1.49,  1)    => 1
+  // roundToFactor(1.5,   1)    => 2
+  // roundToFactor(1.49,  2)    => 2
+  // roundToFactor(1.49,  3)    => 0
+  // roundToFactor(13,    2)    => 14
+  // roundToFactor(13,    3)    => 12
+  // roundToFactor(0.625, 0.25) => 0.75
+  return Math.round(n / factor) * factor;
 }
 
 connectToServer();
