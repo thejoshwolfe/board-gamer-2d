@@ -106,8 +106,19 @@ mainDiv.addEventListener("mousemove", function(event) {
     var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
     var objectNewX = draggingObjectStartX + dx / coordinateSystem.unitWidth;
     var objectNewY = draggingObjectStartY + dy / coordinateSystem.unitHeight;
-    if (objectDefinition.snapX != null) objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
-    if (objectDefinition.snapY != null) objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
+    // snapping
+    var snapX = objectDefinition.snapX || 0;
+    var snapY = objectDefinition.snapY || 0;
+    var minX = coordinateSystem.minX || -Infinity;
+    var maxX = coordinateSystem.maxX ||  Infinity;
+    var minY = coordinateSystem.minY || -Infinity;
+    var maxY = coordinateSystem.maxY ||  Infinity;
+    if (minX - snapX <= objectNewX && objectNewX < maxX + snapX &&
+        minY - snapY <= objectNewY && objectNewY < maxY + snapY) {
+      objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
+      objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
+    }
+
     if (!(object.x === objectNewX &&
           object.y === objectNewY)) {
       object.x = objectNewX;
@@ -245,6 +256,8 @@ function roundToFactor(n, factor) {
   // roundToFactor(13,    2)    => 14
   // roundToFactor(13,    3)    => 12
   // roundToFactor(0.625, 0.25) => 0.75
+  // roundToFactor(x,     0)    => x
+  if (factor === 0) return n;
   return Math.round(n / factor) * factor;
 }
 
