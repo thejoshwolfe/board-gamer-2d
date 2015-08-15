@@ -1,87 +1,97 @@
 var mainDiv = document.getElementById("mainDiv");
-var cardsById = {};
 var userName = null;
 
-function createCard(id, x, y, z) {
-  var card = {id:id, x:x, y:y, z:z};
-  cardsById[id] = card;
-  // create the html element, but don't position it until we call render()
-  var src = "su.png";
-  mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject" src="'+src+'">');
-  return card;
-}
-function deleteEverything() {
-  mainDiv.innerHTML = "";
-  cardsById = {};
-  userName = null;
-}
-function bringToTop(card) {
-  var cards = getCards();
-  if (cards[cards.length - 1] !== card) {
-    card.z = cards[cards.length - 1].z + 1;
+var gameDefinition;
+var objectsById;
+function initObjects() {
+  objectsById = {};
+  for (var id in gameDefinition.objects) {
+    var objectDefinition = gameDefinition.objects[id];
+    var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
+    var object = {
+      id: id,
+      x: coordinateSystem.x + coordinateSystem.unitWidth * objectDefinition.x,
+      y: coordinateSystem.y + coordinateSystem.unitHeight * objectDefinition.y,
+      z: objectDefinition.z,
+      width: coordinateSystem.unitWidth * objectDefinition.width,
+      height: coordinateSystem.unitHeight * objectDefinition.height,
+    };
+    objectsById[id] = object;
+
+    var src = objectDefinition.front;
+    mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject" src="'+src+'">');
+    render(object);
   }
 }
-function getNewTopCardZ() {
-  var cards = getCards();
-  if (cards.length === 0) return 0;
-  return cards[cards.length - 1].z + 1;
+
+function deleteEverything() {
+  mainDiv.innerHTML = "";
+  userName = null;
+  gameDefinition = null;
+  objectsById = null;
+}
+function bringToTop(object) {
+  var objects = getObjectsInZOrder();
+  if (objects[objects.length - 1] !== object) {
+    object.z = objects[objects.length - 1].z + 1;
+  }
+}
+function getNewTopObjectZ() {
+  var objects = getObjectsInZOrder();
+  if (objects.length === 0) return 0;
+  return objects[objects.length - 1].z + 1;
 }
 
-var draggingCard;
-var draggingCardStartX;
-var draggingCardStartY;
-var draggingCardStartZ;
+var draggingObject;
+var draggingObjectStartX;
+var draggingObjectStartY;
+var draggingObjectStartZ;
 var draggingMouseStartX;
 var draggingMouseStartY;
 mainDiv.addEventListener("mousedown", function(event) {
   if (!isConnected) return;
-  var x = eventToMouseX(event, mainDiv);
-  var y = eventToMouseY(event, mainDiv);
   if (event.button === 0) {
-    var cards = getCards();
-    for (var i = cards.length - 1; i >= 0; i--) {
-      var card = cards[i];
-      if (x > card.x && x < card.x + deckProperties.width &&
-          y > card.y && y < card.y + deckProperties.height) {
-        draggingCard = card;
-        draggingCardStartX = card.x;
-        draggingCardStartY = card.y;
-        draggingCardStartZ = card.z;
+    event.preventDefault();
+    var x = eventToMouseX(event, mainDiv);
+    var y = eventToMouseY(event, mainDiv);
+    var objects = getObjectsInZOrder();
+    for (var i = objects.length - 1; i >= 0; i--) {
+      var object = objects[i];
+      if (x > object.x && x < object.x + object.width &&
+          y > object.y && y < object.y + object.height) {
+        draggingObject = object;
+        draggingObjectStartX = object.x;
+        draggingObjectStartY = object.y;
+        draggingObjectStartZ = object.z;
         draggingMouseStartX = x;
         draggingMouseStartY = y;
         // bring to top
-        bringToTop(card);
+        bringToTop(object);
+        render(object);
         break;
       }
     }
   }
-  if (event.button === 2) {
-    var id = generateRandomId()
-    var card = createCard(id, x, y, getNewTopCardZ());
-    sendCommand("createCard", {id:card.id, x:card.x, y:card.y, z:card.z});
-  }
-  event.preventDefault();
-  render();
 });
 document.addEventListener("mouseup", function(event) {
-  if (draggingCard != null) {
-    if (!(draggingCard.x === draggingCardStartX &&
-          draggingCard.y === draggingCardStartY &&
-          draggingCard.z === draggingCardStartZ)) {
-      cardWasMoved(draggingCard);
+  if (draggingObject != null) {
+    if (!(draggingObject.x === draggingObjectStartX &&
+          draggingObject.y === draggingObjectStartY &&
+          draggingObject.z === draggingObjectStartZ)) {
+      objectWasMoved(draggingObject);
     }
-    draggingCard = null;
+    draggingObject = null;
   }
 });
 mainDiv.addEventListener("mousemove", function(event) {
-  if (draggingCard != null) {
+  if (draggingObject != null) {
     var x = eventToMouseX(event, mainDiv);
     var y = eventToMouseY(event, mainDiv);
     var dx = x - draggingMouseStartX;
     var dy = y - draggingMouseStartY;
-    draggingCard.x = draggingCardStartX + dx;
-    draggingCard.y = draggingCardStartY + dy;
-    render();
+    draggingObject.x = draggingObjectStartX + dx;
+    draggingObject.y = draggingObjectStartY + dy;
+    render(draggingObject);
   }
 });
 mainDiv.addEventListener("contextmenu", function(event) {
@@ -91,31 +101,22 @@ mainDiv.addEventListener("contextmenu", function(event) {
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
-var deckProperties = {
-  height: 110,
-  width: 81,
-};
-
-function render() {
-  var cards = getCards();
-  for (var i = 0; i < cards.length; i++) {
-    var card = cards[i];
-    var cardImg = document.getElementById(card.id);
-    cardImg.style.width = deckProperties.width;
-    cardImg.style.height = deckProperties.height;
-    cardImg.style.left = card.x;
-    cardImg.style.top = card.y;
-    cardImg.style.zIndex = i;
-  }
+function render(object) {
+  var objectImg = document.getElementById(object.id);
+  objectImg.style.width = object.width;
+  objectImg.style.height = object.height;
+  objectImg.style.left = object.x;
+  objectImg.style.top = object.y;
+  objectImg.style.zIndex = object.z;
 }
 
-function getCards() {
-  var cards = [];
-  for (var cardId in cardsById) {
-    cards.push(cardsById[cardId]);
+function getObjectsInZOrder() {
+  var objects = [];
+  for (var objectId in objectsById) {
+    objects.push(objectsById[objectId]);
   }
-  cards.sort(compareZ);
-  return cards;
+  objects.sort(compareZ);
+  return objects;
 }
 function compareZ(a, b) {
   return operatorCompare(a.z, b.z);
@@ -123,8 +124,8 @@ function compareZ(a, b) {
 function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function cardWasMoved(card) {
-  sendCommand("moveCard", {id:card.id, x:card.x, y:card.y, z:card.z});
+function objectWasMoved(object) {
+  sendCommand("moveObject", {id:object.id, x:object.x, y:object.y, z:object.z});
 }
 
 var socket;
@@ -181,19 +182,22 @@ function sendCommand(cmd, args) {
 function handleMessage(message) {
   if (message.user === userName) return;
   switch (message.cmd) {
-    case "createCard":
-      createCard(message.args.id, message.args.x, message.args.y, message.args.z);
-      render();
-      break;
-    case "moveCard":
-      var card = cardsById[message.args.id];
-      card.x = message.args.x;
-      card.y = message.args.y;
-      card.z = message.args.z;
-      render();
-      break;
     case "login":
       userName = message.args;
+      break;
+    case "game":
+      gameDefinition = message.args;
+      initObjects();
+      break;
+    case "multi":
+      message.args.forEach(handleMessage);
+      break;
+    case "moveObject":
+      var object = objectsById[message.args.id];
+      object.x = message.args.x;
+      object.y = message.args.y;
+      object.z = message.args.z;
+      render(object);
       break;
     default:
       console.log("unknown command:", message.cmd);
