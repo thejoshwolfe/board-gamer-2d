@@ -6,7 +6,8 @@ var objectsById;
 function initObjects() {
   objectsById = {};
   for (var id in gameDefinition.objects) {
-    var objectDefinition = gameDefinition.objects[id];
+    var objectDefinition = getObjectDefinition(id);
+    if (objectDefinition.prototype) continue;
     var object = {
       id: id,
       x: objectDefinition.x,
@@ -22,8 +23,26 @@ function initObjects() {
     render(object);
   }
 }
-function getObjectDefinition(object) {
-  return gameDefinition.objects[object.id];
+function getObjectDefinition(id) {
+  // resolve prototypes
+  var result = {};
+  recurse(id, 0);
+  return result;
+
+  function recurse(id, depth) {
+    var definition = gameDefinition.objects[id];
+    for (var property in definition) {
+      if (property === "prototypes") continue; // special handling
+      if (property === "prototype" && depth !== 0) continue;  // don't inherit this property
+      if (property in result) continue; // shadowed
+      var value = definition[property];
+      result[property] = value;
+    }
+    var prototypes = definition.prototypes || [];
+    prototypes.forEach(function(id) {
+      recurse(id, depth + 1);
+    });
+  }
 }
 
 function deleteEverything() {
@@ -49,7 +68,7 @@ function onObjectMouseDown(event) {
   event.preventDefault();
   var objectId = this.id;
   var object = objectsById[objectId];
-  if (getObjectDefinition(object).movable === false) return;
+  if (getObjectDefinition(object.id).movable === false) return;
 
   // begin drag
   var x = eventToMouseX(event, mainDiv);
@@ -83,7 +102,7 @@ mainDiv.addEventListener("mousemove", function(event) {
     var dx = x - draggingMouseStartX;
     var dy = y - draggingMouseStartY;
     // units
-    var objectDefinition = getObjectDefinition(object);
+    var objectDefinition = getObjectDefinition(object.id);
     var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
     var objectNewX = draggingObjectStartX + dx / coordinateSystem.unitWidth;
     var objectNewY = draggingObjectStartY + dy / coordinateSystem.unitHeight;
@@ -106,7 +125,7 @@ function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBound
 
 function render(object) {
   var objectImg = document.getElementById(object.id);
-  var objectDefinition = getObjectDefinition(object);
+  var objectDefinition = getObjectDefinition(object.id);
   var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
   objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
   objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
