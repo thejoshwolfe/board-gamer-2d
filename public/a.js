@@ -23,6 +23,9 @@ function initObjects() {
     render(object);
   }
 }
+function getObjectDefinition(object) {
+  return gameDefinition.objects[object.id];
+}
 
 function deleteEverything() {
   mainDiv.innerHTML = "";
@@ -35,11 +38,6 @@ function bringToTop(object) {
   if (objects[objects.length - 1] !== object) {
     object.z = objects[objects.length - 1].z + 1;
   }
-}
-function getNewTopObjectZ() {
-  var objects = getObjectsInZOrder();
-  if (objects.length === 0) return 0;
-  return objects[objects.length - 1].z + 1;
 }
 
 var draggingObject;
@@ -57,6 +55,7 @@ mainDiv.addEventListener("mousedown", function(event) {
     var objects = getObjectsInZOrder();
     for (var i = objects.length - 1; i >= 0; i--) {
       var object = objects[i];
+      if (getObjectDefinition(object).movable === false) continue;
       if (x > object.x && x < object.x + object.width &&
           y > object.y && y < object.y + object.height) {
         draggingObject = object;
