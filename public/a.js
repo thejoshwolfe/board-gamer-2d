@@ -20,6 +20,8 @@ function initObjects() {
 
     var src = objectDefinition.front;
     mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject" src="'+src+'">');
+    var objectImg = document.getElementById(object.id);
+    objectImg.addEventListener("mousedown", onObjectMouseDown);
     render(object);
   }
 }
@@ -46,32 +48,23 @@ var draggingObjectStartY;
 var draggingObjectStartZ;
 var draggingMouseStartX;
 var draggingMouseStartY;
-mainDiv.addEventListener("mousedown", function(event) {
-  if (!isConnected) return;
-  if (event.button === 0) {
-    event.preventDefault();
-    var x = eventToMouseX(event, mainDiv);
-    var y = eventToMouseY(event, mainDiv);
-    var objects = getObjectsInZOrder();
-    for (var i = objects.length - 1; i >= 0; i--) {
-      var object = objects[i];
-      if (getObjectDefinition(object).movable === false) continue;
-      if (x > object.x && x < object.x + object.width &&
-          y > object.y && y < object.y + object.height) {
-        draggingObject = object;
-        draggingObjectStartX = object.x;
-        draggingObjectStartY = object.y;
-        draggingObjectStartZ = object.z;
-        draggingMouseStartX = x;
-        draggingMouseStartY = y;
-        // bring to top
-        bringToTop(object);
-        render(object);
-        break;
-      }
-    }
-  }
-});
+function onObjectMouseDown(event) {
+  event.preventDefault();
+  var objectId = this.id;
+  var object = objectsById[objectId];
+  if (getObjectDefinition(object).movable === false) return;
+  var x = eventToMouseX(event, mainDiv);
+  var y = eventToMouseY(event, mainDiv);
+  draggingObject = object;
+  draggingObjectStartX = object.x;
+  draggingObjectStartY = object.y;
+  draggingObjectStartZ = object.z;
+  draggingMouseStartX = x;
+  draggingMouseStartY = y;
+  // bring to top
+  bringToTop(object);
+  render(object);
+}
 document.addEventListener("mouseup", function(event) {
   if (draggingObject != null) {
     if (!(draggingObject.x === draggingObjectStartX &&
