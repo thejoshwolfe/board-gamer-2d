@@ -13,11 +13,11 @@ function initObjects() {
       x: objectDefinition.x,
       y: objectDefinition.y,
       z: objectDefinition.z,
+      flipped: !!objectDefinition.flipped,
     };
     objectsById[id] = object;
 
-    var src = objectDefinition.front;
-    mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject" src="'+src+'">');
+    mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject">');
     var objectImg = document.getElementById(object.id);
     objectImg.addEventListener("mousedown", onObjectMouseDown);
     render(object);
@@ -62,6 +62,7 @@ var draggingObject;
 var draggingObjectStartX;
 var draggingObjectStartY;
 var draggingObjectStartZ;
+var draggingObjectStartFlipped;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
@@ -77,6 +78,7 @@ function onObjectMouseDown(event) {
   draggingObjectStartX = object.x;
   draggingObjectStartY = object.y;
   draggingObjectStartZ = object.z;
+  draggingObjectStartFlipped = object.flipped;
   draggingMouseStartX = x;
   draggingMouseStartY = y;
 
@@ -87,7 +89,8 @@ document.addEventListener("mouseup", function(event) {
   if (draggingObject != null) {
     if (!(draggingObject.x === draggingObjectStartX &&
           draggingObject.y === draggingObjectStartY &&
-          draggingObject.z === draggingObjectStartZ)) {
+          draggingObject.z === draggingObjectStartZ &&
+          draggingObject.flipped === draggingObjectStartFlipped)) {
       objectWasMoved(draggingObject);
     }
     draggingObject = null;
@@ -131,12 +134,36 @@ mainDiv.addEventListener("contextmenu", function(event) {
  event.preventDefault();
 });
 
+var SHIFT = 1;
+var CTRL = 2;
+var ALT = 4;
+document.addEventListener("keydown", function(event) {
+  var modifierMask = (
+    (event.shiftKey ? SHIFT : 0) |
+    (event.ctrlKey ? CTRL : 0) |
+    (event.altKey ? ALT : 0)
+  );
+  switch (event.keyCode) {
+    case "F".charCodeAt(0):
+      if (draggingObject != null && modifierMask === 0) { flipObject(draggingObject); break; }
+      return;
+    default: return;
+  }
+  event.preventDefault();
+});
+
+function flipObject(object) {
+  object.flipped = !object.flipped;
+  render(object);
+}
+
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
 function render(object) {
   var objectImg = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
+  objectImg.src = object.flipped ? objectDefinition.back : objectDefinition.front;;
   var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
   objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
   objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
@@ -160,7 +187,7 @@ function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function objectWasMoved(object) {
-  sendCommand("moveObject", {id:object.id, x:object.x, y:object.y, z:object.z});
+  sendCommand("moveObject", {id:object.id, x:object.x, y:object.y, z:object.z, flipped:object.flipped});
 }
 
 var socket;
@@ -232,6 +259,7 @@ function handleMessage(message) {
       object.x = message.args.x;
       object.y = message.args.y;
       object.z = message.args.z;
+      object.flipped = message.args.flipped;
       render(object);
       break;
     default:
