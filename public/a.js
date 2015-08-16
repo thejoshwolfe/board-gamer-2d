@@ -193,6 +193,10 @@ function reverseChange(change) {
   sendMessage(newChange);
   return newChange;
 }
+function pushChangeToHistory(change) {
+  changeHistory.push(change);
+  futureChanges = [];
+}
 
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
@@ -308,7 +312,7 @@ function connectionLost() {
 }
 function sendCommand(cmd, args) {
   var message = {cmd:cmd, user:userName, args:args};
-  changeHistory.push(message);
+  pushChangeToHistory(message);
   sendMessage(message);
 }
 function sendMessage(message) {
@@ -328,7 +332,7 @@ function handleMessage(message) {
       break;
     case "moveObject":
       if (message.user === userName) return;
-      changeHistory.push(message);
+      pushChangeToHistory(message);
       var object = objectsById[message.args.id];
       object.x = message.args.to.x;
       object.y = message.args.to.y;
