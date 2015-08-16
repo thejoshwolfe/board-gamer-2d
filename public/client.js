@@ -55,10 +55,10 @@ function deleteEverything() {
   gameDefinition = null;
   objectsById = null;
 }
-function bringToTop(object) {
+function bringDraggingObjectToTop() {
   var objects = getObjectsInZOrder();
-  if (objects[objects.length - 1] !== object) {
-    object.z = objects[objects.length - 1].z + 1;
+  if (objects[objects.length - 1] !== draggingObject) {
+    draggingObjectNewZ = objects[objects.length - 1].z + 1;
   }
 }
 
@@ -86,7 +86,7 @@ function onObjectMouseDown(event) {
   draggingMouseStartX = x;
   draggingMouseStartY = y;
 
-  bringToTop(object);
+  bringDraggingObjectToTop();
   render(object);
 }
 document.addEventListener("mouseup", function(event) {
