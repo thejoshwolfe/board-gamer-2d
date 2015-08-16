@@ -3,8 +3,12 @@ var userName = null;
 
 var gameDefinition;
 var objectsById;
-function initObjects() {
+var changeHistory;
+var futureChanges;
+function setGameDefinition(asdf) {
   objectsById = {};
+  changeHistory = [];
+  futureChanges = [];
   for (var id in gameDefinition.objects) {
     var objectDefinition = getObjectDefinition(id);
     if (objectDefinition.prototype) continue;
@@ -59,10 +63,10 @@ function bringToTop(object) {
 }
 
 var draggingObject;
-var draggingObjectStartX;
-var draggingObjectStartY;
-var draggingObjectStartZ;
-var draggingObjectStartFlipped;
+var draggingObjectNewX;
+var draggingObjectNewY;
+var draggingObjectNewZ;
+var draggingObjectNewFlipped;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
@@ -75,10 +79,10 @@ function onObjectMouseDown(event) {
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   draggingObject = object;
-  draggingObjectStartX = object.x;
-  draggingObjectStartY = object.y;
-  draggingObjectStartZ = object.z;
-  draggingObjectStartFlipped = object.flipped;
+  draggingObjectNewX = object.x;
+  draggingObjectNewY = object.y;
+  draggingObjectNewZ = object.z;
+  draggingObjectNewFlipped = object.flipped;
   draggingMouseStartX = x;
   draggingMouseStartY = y;
 
@@ -87,11 +91,11 @@ function onObjectMouseDown(event) {
 }
 document.addEventListener("mouseup", function(event) {
   if (draggingObject != null) {
-    if (!(draggingObject.x === draggingObjectStartX &&
-          draggingObject.y === draggingObjectStartY &&
-          draggingObject.z === draggingObjectStartZ &&
-          draggingObject.flipped === draggingObjectStartFlipped)) {
-      objectWasMoved(draggingObject);
+    if (!(draggingObject.x === draggingObjectNewX &&
+          draggingObject.y === draggingObjectNewY &&
+          draggingObject.z === draggingObjectNewZ &&
+          draggingObject.flipped === draggingObjectNewFlipped)) {
+      moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFlipped);
     }
     draggingObject = null;
   }
@@ -107,25 +111,25 @@ mainDiv.addEventListener("mousemove", function(event) {
     // units
     var objectDefinition = getObjectDefinition(object.id);
     var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
-    var objectNewX = draggingObjectStartX + dx / coordinateSystem.unitWidth;
-    var objectNewY = draggingObjectStartY + dy / coordinateSystem.unitHeight;
+    var objectNewX = object.x + dx / coordinateSystem.unitWidth;
+    var objectNewY = object.y + dy / coordinateSystem.unitHeight;
     // snapping
     var snapX = objectDefinition.snapX || 0;
     var snapY = objectDefinition.snapY || 0;
-    var minX = coordinateSystem.minX || -Infinity;
-    var maxX = coordinateSystem.maxX ||  Infinity;
-    var minY = coordinateSystem.minY || -Infinity;
-    var maxY = coordinateSystem.maxY ||  Infinity;
+    var minX = coordinateSystem.minX != null ? coordinateSystem.minX : -Infinity;
+    var maxX = coordinateSystem.maxX != null ? coordinateSystem.maxX :  Infinity;
+    var minY = coordinateSystem.minY != null ? coordinateSystem.minY : -Infinity;
+    var maxY = coordinateSystem.maxY != null ? coordinateSystem.maxY :  Infinity;
     if (minX - snapX <= objectNewX && objectNewX < maxX + snapX &&
         minY - snapY <= objectNewY && objectNewY < maxY + snapY) {
       objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
       objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
     }
 
-    if (!(object.x === objectNewX &&
-          object.y === objectNewY)) {
-      object.x = objectNewX;
-      object.y = objectNewY;
+    if (!(draggingObjectNewX === objectNewX &&
+          draggingObjectNewY === objectNewY)) {
+      draggingObjectNewX = objectNewX;
+      draggingObjectNewY = objectNewY;
       render(object);
     }
   }
@@ -145,31 +149,74 @@ document.addEventListener("keydown", function(event) {
   );
   switch (event.keyCode) {
     case "F".charCodeAt(0):
-      if (draggingObject != null && modifierMask === 0) { flipObject(draggingObject); break; }
+      if (draggingObject != null && modifierMask === 0) { flipDraggingObject(); break; }
+      return;
+    case "Z".charCodeAt(0):
+      if (draggingObject == null && modifierMask === CTRL)       { undo(); break; }
+      if (draggingObject == null && modifierMask === CTRL|SHIFT) { redo(); break; }
+      return;
+    case "Y".charCodeAt(0):
+      if (modifierMask === CTRL) { redo(); break; }
       return;
     default: return;
   }
   event.preventDefault();
 });
 
-function flipObject(object) {
-  object.flipped = !object.flipped;
+function flipDraggingObject() {
+  draggingObjectNewFlipped = !draggingObjectNewFlipped;
+  render(draggingObject);
+}
+
+function undo() {
+  if (changeHistory.length === 0) return;
+  futureChanges.push(reverseChange(changeHistory.pop()));
+}
+function redo() {
+  if (futureChanges.length === 0) return;
+  changeHistory.push(reverseChange(futureChanges.pop()));
+}
+function reverseChange(change) {
+  if (change.cmd !== "moveObject") throw asdf;
+  var object = objectsById[change.args.id];
+  object.x = change.args.from.x;
+  object.y = change.args.from.y;
+  object.z = change.args.from.z;
+  object.flipped = change.args.from.flipped;
   render(object);
+
+  var newChange = JSON.parse(JSON.stringify(change));
+  var tmp = newChange.args.from;
+  newChange.args.from = newChange.args.to;
+  newChange.args.to = tmp;
+  newChange.user = userName;
+  sendMessage(newChange);
+  return newChange;
 }
 
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
 function render(object) {
+  var x = object.x;
+  var y = object.y;
+  var z = object.z;
+  var flipped = object.flipped;
+  if (object === draggingObject) {
+    x = draggingObjectNewX;
+    y = draggingObjectNewY;
+    z = draggingObjectNewZ;
+    flipped = draggingObjectNewFlipped;
+  }
   var objectImg = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
-  objectImg.src = object.flipped ? objectDefinition.back : objectDefinition.front;;
+  objectImg.src = flipped ? objectDefinition.back : objectDefinition.front;;
   var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
   objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
   objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
-  objectImg.style.left = coordinateSystem.x + coordinateSystem.unitWidth * object.x;
-  objectImg.style.top = coordinateSystem.y + coordinateSystem.unitHeight * object.y;
-  objectImg.style.zIndex = object.z;
+  objectImg.style.left = coordinateSystem.x + coordinateSystem.unitWidth * x;
+  objectImg.style.top = coordinateSystem.y + coordinateSystem.unitHeight * y;
+  objectImg.style.zIndex = z;
 }
 
 function getObjectsInZOrder() {
@@ -186,8 +233,29 @@ function compareZ(a, b) {
 function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function objectWasMoved(object) {
-  sendCommand("moveObject", {id:object.id, x:object.x, y:object.y, z:object.z, flipped:object.flipped});
+function moveObject(object, x, y, z, flipped) {
+  var args = {
+    id: object.id,
+    from: {
+      x: object.x,
+      y: object.y,
+      z: object.z,
+      flipped: object.flipped,
+    },
+    to: {
+      x: x,
+      y: y,
+      z: z,
+      flipped: flipped,
+    },
+  };
+  sendCommand("moveObject", args);
+  // anticipate
+  object.x = x;
+  object.y = y;
+  object.z = z;
+  object.flipped = flipped;
+  render(object);
 }
 
 var socket;
@@ -239,27 +307,33 @@ function connectionLost() {
   deleteEverything();
 }
 function sendCommand(cmd, args) {
-  socket.send(JSON.stringify({cmd:cmd, user:userName, args:args}));
+  var message = {cmd:cmd, user:userName, args:args};
+  changeHistory.push(message);
+  sendMessage(message);
+}
+function sendMessage(message) {
+  socket.send(JSON.stringify(message));
 }
 function handleMessage(message) {
-  if (message.user === userName) return;
   switch (message.cmd) {
     case "login":
       userName = message.args;
       break;
     case "game":
       gameDefinition = message.args;
-      initObjects();
+      setGameDefinition();
       break;
     case "multi":
       message.args.forEach(handleMessage);
       break;
     case "moveObject":
+      if (message.user === userName) return;
+      changeHistory.push(message);
       var object = objectsById[message.args.id];
-      object.x = message.args.x;
-      object.y = message.args.y;
-      object.z = message.args.z;
-      object.flipped = message.args.flipped;
+      object.x = message.args.to.x;
+      object.y = message.args.to.y;
+      object.z = message.args.to.z;
+      object.flipped = message.args.to.flipped;
       render(object);
       break;
     default:
