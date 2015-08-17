@@ -17,7 +17,7 @@ function setGameDefinition(asdf) {
       x: objectDefinition.x,
       y: objectDefinition.y,
       z: objectDefinition.z,
-      flipped: !!objectDefinition.flipped,
+      flipped: 0,
     };
     objectsById[id] = object;
 
@@ -170,7 +170,11 @@ document.addEventListener("keydown", function(event) {
 });
 
 function flipDraggingObject() {
-  draggingObjectNewFlipped = !draggingObjectNewFlipped;
+  var objectDefinition = getObjectDefinition(draggingObject.id);
+  draggingObjectNewFlipped += 1;
+  if(objectDefinition.faces.length === draggingObjectNewFlipped){
+    draggingObjectNewFlipped = 0;
+  }
   render(draggingObject);
 }
 
@@ -220,7 +224,7 @@ function render(object) {
   }
   var objectImg = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
-  objectImg.src = flipped ? objectDefinition.back : objectDefinition.front;;
+  objectImg.src = objectDefinition.faces[flipped];
   var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
   objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
   objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
