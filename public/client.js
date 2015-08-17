@@ -70,12 +70,15 @@ var draggingObjectNewFlipped;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
+  if (event.button !== 0) return;
   event.preventDefault();
-  var objectId = this.id;
+  var objectImg = this;
+  var objectId = objectImg.id;
   var object = objectsById[objectId];
   if (getObjectDefinition(object.id).movable === false) return;
 
   // begin drag
+  objectImg.classList.add("instantMove");
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   draggingObject = object;
@@ -96,6 +99,9 @@ document.addEventListener("mouseup", function(event) {
           draggingObject.z === draggingObjectNewZ &&
           draggingObject.flipped === draggingObjectNewFlipped)) {
       moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFlipped);
+
+      var objectImg = document.getElementById(draggingObject.id);
+      objectImg.classList.remove("instantMove");
     }
     draggingObject = null;
   }
