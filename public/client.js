@@ -17,7 +17,7 @@ function setGameDefinition(asdf) {
       x: objectDefinition.x,
       y: objectDefinition.y,
       z: objectDefinition.z,
-      flipped: 0,
+      faceIndex: 0,
     };
     objectsById[id] = object;
 
@@ -66,7 +66,7 @@ var draggingObject;
 var draggingObjectNewX;
 var draggingObjectNewY;
 var draggingObjectNewZ;
-var draggingObjectNewFlipped;
+var draggingObjectNewFaceIndex;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
@@ -85,7 +85,7 @@ function onObjectMouseDown(event) {
   draggingObjectNewX = object.x;
   draggingObjectNewY = object.y;
   draggingObjectNewZ = object.z;
-  draggingObjectNewFlipped = object.flipped;
+  draggingObjectNewFaceIndex = object.faceIndex;
   draggingMouseStartX = x;
   draggingMouseStartY = y;
 
@@ -97,8 +97,8 @@ document.addEventListener("mouseup", function(event) {
     if (!(draggingObject.x === draggingObjectNewX &&
           draggingObject.y === draggingObjectNewY &&
           draggingObject.z === draggingObjectNewZ &&
-          draggingObject.flipped === draggingObjectNewFlipped)) {
-      moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFlipped);
+          draggingObject.faceIndex === draggingObjectNewFaceIndex)) {
+      moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFaceIndex);
 
       var objectImg = document.getElementById(draggingObject.id);
       objectImg.classList.remove("instantMove");
@@ -171,9 +171,9 @@ document.addEventListener("keydown", function(event) {
 
 function flipDraggingObject() {
   var objectDefinition = getObjectDefinition(draggingObject.id);
-  draggingObjectNewFlipped += 1;
-  if(objectDefinition.faces.length === draggingObjectNewFlipped){
-    draggingObjectNewFlipped = 0;
+  draggingObjectNewFaceIndex += 1;
+  if(objectDefinition.faces.length === draggingObjectNewFaceIndex){
+    draggingObjectNewFaceIndex = 0;
   }
   render(draggingObject);
 }
@@ -192,7 +192,7 @@ function reverseChange(change) {
   object.x = change.args.from.x;
   object.y = change.args.from.y;
   object.z = change.args.from.z;
-  object.flipped = change.args.from.flipped;
+  object.faceIndex = change.args.from.faceIndex;
   render(object);
 
   var newChange = JSON.parse(JSON.stringify(change));
@@ -215,16 +215,16 @@ function render(object) {
   var x = object.x;
   var y = object.y;
   var z = object.z;
-  var flipped = object.flipped;
+  var faceIndex = object.faceIndex;
   if (object === draggingObject) {
     x = draggingObjectNewX;
     y = draggingObjectNewY;
     z = draggingObjectNewZ;
-    flipped = draggingObjectNewFlipped;
+    faceIndex = draggingObjectNewFaceIndex;
   }
   var objectImg = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
-  objectImg.src = objectDefinition.faces[flipped];
+  objectImg.src = objectDefinition.faces[faceIndex];
   var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
   objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
   objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
@@ -247,20 +247,20 @@ function compareZ(a, b) {
 function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function moveObject(object, x, y, z, flipped) {
+function moveObject(object, x, y, z, faceIndex) {
   var args = {
     id: object.id,
     from: {
       x: object.x,
       y: object.y,
       z: object.z,
-      flipped: object.flipped,
+      faceIndex: object.faceIndex,
     },
     to: {
       x: x,
       y: y,
       z: z,
-      flipped: flipped,
+      faceIndex: faceIndex,
     },
   };
   sendCommand("moveObject", args);
@@ -268,7 +268,7 @@ function moveObject(object, x, y, z, flipped) {
   object.x = x;
   object.y = y;
   object.z = z;
-  object.flipped = flipped;
+  object.faceIndex = faceIndex;
   render(object);
 }
 
@@ -347,7 +347,7 @@ function handleMessage(message) {
       object.x = message.args.to.x;
       object.y = message.args.to.y;
       object.z = message.args.to.z;
-      object.flipped = message.args.to.flipped;
+      object.faceIndex = message.args.to.faceIndex;
       render(object);
       break;
     default:
