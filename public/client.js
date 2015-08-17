@@ -154,6 +154,9 @@ document.addEventListener("keydown", function(event) {
     (event.altKey ? ALT : 0)
   );
   switch (event.keyCode) {
+    case "R".charCodeAt(0):
+      if (draggingObject != null && modifierMask === 0) { rollDraggingObject(); break; }
+      return;
     case "F".charCodeAt(0):
       if (draggingObject != null && modifierMask === 0) { flipDraggingObject(); break; }
       return;
@@ -175,6 +178,11 @@ function flipDraggingObject() {
   if(objectDefinition.faces.length === draggingObjectNewFaceIndex){
     draggingObjectNewFaceIndex = 0;
   }
+  render(draggingObject);
+}
+function rollDraggingObject() {
+  var objectDefinition = getObjectDefinition(draggingObject.id);
+  draggingObjectNewFaceIndex = Math.floor(Math.random() * objectDefinition.faces.length);
   render(draggingObject);
 }
 
