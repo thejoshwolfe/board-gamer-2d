@@ -3,10 +3,12 @@ var userName = null;
 
 var gameDefinition;
 var objectsById;
+var objectsWithSnapZones; // cache
 var changeHistory;
 var futureChanges;
-function setGameDefinition(asdf) {
+function initGame() {
   objectsById = {};
+  objectsWithSnapZones = [];
   changeHistory = [];
   futureChanges = [];
   for (var id in gameDefinition.objects) {
@@ -20,6 +22,7 @@ function setGameDefinition(asdf) {
       faceIndex: 0,
     };
     objectsById[id] = object;
+    if (objectDefinition.snapZones != null) objectsWithSnapZones.push(object);
 
     mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject">');
     var objectImg = document.getElementById(object.id);
@@ -118,11 +121,45 @@ mainDiv.addEventListener("mousemove", function(event) {
     var objectDefinition = getObjectDefinition(object.id);
     var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
     var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
-    // snapping
-    var snapX = objectDefinition.snapX || 0;
-    var snapY = objectDefinition.snapY || 0;
-    objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
-    objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
+    // snap zones
+    (function() {
+      objectsWithSnapZones.sort(compareZ);
+      for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
+        var containerObject = objectsWithSnapZones[i];
+        var containerRelativeX = objectNewX - containerObject.x;
+        var containerRelativeY = objectNewY - containerObject.y;
+        var containerObjectDefinition = getObjectDefinition(containerObject.id);
+        for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
+          var snapZone = containerObjectDefinition.snapZones[j];
+          var snapZoneRelativeX = containerRelativeX - snapZone.x;
+          var snapZoneRelativeY = containerRelativeY - snapZone.y;
+          if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
+          if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
+          // this is the zone for us
+          var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
+          var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
+          var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
+          var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
+          if (!inBoundsX && !inBoundsY) {
+            // on an outside corner. we need to pick an edge to rub.
+            if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
+              // x is further off
+              inBoundsX = true;
+            } else {
+              // y is further off
+              inBoundsY = true;
+            }
+          }
+          if (inBoundsY) {
+            objectNewX = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
+          }
+          if (inBoundsX) {
+            objectNewY = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
+          }
+          return;
+        }
+      }
+    })();
 
     if (!(draggingObjectNewX === objectNewX &&
           draggingObjectNewY === objectNewY)) {
@@ -227,8 +264,8 @@ function render(object) {
   objectImg.src = objectDefinition.faces[faceIndex];
   objectImg.style.width = gameDefinition.coordinates.unitWidth * objectDefinition.width;
   objectImg.style.height = gameDefinition.coordinates.unitHeight * objectDefinition.height;
-  objectImg.style.left = gameDefinition.coordinates.x + gameDefinition.coordinates.unitWidth * x;
-  objectImg.style.top = gameDefinition.coordinates.y + gameDefinition.coordinates.unitHeight * y;
+  objectImg.style.left = gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth * x;
+  objectImg.style.top = gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
   objectImg.style.zIndex = z;
 }
 
@@ -334,7 +371,7 @@ function handleMessage(message) {
       break;
     case "game":
       gameDefinition = message.args;
-      setGameDefinition();
+      initGame();
       break;
     case "multi":
       message.args.forEach(handleMessage);
