@@ -116,21 +116,13 @@ mainDiv.addEventListener("mousemove", function(event) {
     var dy = y - draggingMouseStartY;
     // units
     var objectDefinition = getObjectDefinition(object.id);
-    var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
-    var objectNewX = object.x + dx / coordinateSystem.unitWidth;
-    var objectNewY = object.y + dy / coordinateSystem.unitHeight;
+    var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
+    var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
     // snapping
     var snapX = objectDefinition.snapX || 0;
     var snapY = objectDefinition.snapY || 0;
-    var minX = coordinateSystem.minX != null ? coordinateSystem.minX : -Infinity;
-    var maxX = coordinateSystem.maxX != null ? coordinateSystem.maxX :  Infinity;
-    var minY = coordinateSystem.minY != null ? coordinateSystem.minY : -Infinity;
-    var maxY = coordinateSystem.maxY != null ? coordinateSystem.maxY :  Infinity;
-    if (minX - snapX <= objectNewX && objectNewX < maxX + snapX &&
-        minY - snapY <= objectNewY && objectNewY < maxY + snapY) {
-      objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
-      objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
-    }
+    objectNewX = roundToFactor(objectNewX, objectDefinition.snapX);
+    objectNewY = roundToFactor(objectNewY, objectDefinition.snapY);
 
     if (!(draggingObjectNewX === objectNewX &&
           draggingObjectNewY === objectNewY)) {
@@ -233,11 +225,10 @@ function render(object) {
   var objectImg = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
   objectImg.src = objectDefinition.faces[faceIndex];
-  var coordinateSystem = gameDefinition.coordinateSystems[objectDefinition.coordinateSystem];
-  objectImg.style.width = coordinateSystem.unitWidth * objectDefinition.width;
-  objectImg.style.height = coordinateSystem.unitHeight * objectDefinition.height;
-  objectImg.style.left = coordinateSystem.x + coordinateSystem.unitWidth * x;
-  objectImg.style.top = coordinateSystem.y + coordinateSystem.unitHeight * y;
+  objectImg.style.width = gameDefinition.coordinates.unitWidth * objectDefinition.width;
+  objectImg.style.height = gameDefinition.coordinates.unitHeight * objectDefinition.height;
+  objectImg.style.left = gameDefinition.coordinates.x + gameDefinition.coordinates.unitWidth * x;
+  objectImg.style.top = gameDefinition.coordinates.y + gameDefinition.coordinates.unitHeight * y;
   objectImg.style.zIndex = z;
 }
 
