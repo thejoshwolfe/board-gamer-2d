@@ -45,6 +45,7 @@ function initGame() {
   objectsInZOrder.forEach(function(object, i) {
     object.z = i;
   });
+  checkForDoneLoading();
 }
 function getObjectDefinition(id) {
   // resolve prototypes
