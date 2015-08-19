@@ -39,6 +39,8 @@ function initGame() {
     mainDiv.insertAdjacentHTML("beforeend", '<canvas id="'+id+'" class="gameObject" style="display:none;"></canvas>');
     var objectDiv = document.getElementById(object.id);
     objectDiv.addEventListener("mousedown", onObjectMouseDown);
+    objectDiv.addEventListener("mousemove", onObjectMouseMove);
+    objectDiv.addEventListener("mouseout", onObjectMouseOut);
   }
   var objectsInZOrder = getObjectsInZOrder();
   // and now reassign all the z's to be unique
@@ -128,6 +130,7 @@ function bringDraggingObjectToTop() {
   }
 }
 
+var hoverObject;
 var draggingObject;
 var draggingObjectNewX;
 var draggingObjectNewY;
@@ -139,12 +142,14 @@ function onObjectMouseDown(event) {
   if (event.button !== 0) return;
   event.preventDefault();
   var objectDiv = this;
-  var objectId = objectDiv.id;
-  var object = objectsById[objectId];
+  var object = objectsById[objectDiv.id];
   if (getObjectDefinition(object.id).movable === false) return;
 
   // begin drag
   objectDiv.classList.add("instantMove");
+  if (hoverObject != null) {
+    document.getElementById(hoverObject.id).classList.remove("hoverSelect");
+  }
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   draggingObject = object;
@@ -158,6 +163,24 @@ function onObjectMouseDown(event) {
   bringDraggingObjectToTop();
   render(object);
 }
+function onObjectMouseMove(event) {
+  var objectDiv = this;
+  var object = objectsById[objectDiv.id];
+  if (getObjectDefinition(object.id).movable === false) return;
+  if (hoverObject !== object) {
+    hoverObject = object;
+    objectDiv.classList.add("hoverSelect");
+  }
+}
+function onObjectMouseOut(event) {
+  var objectDiv = this;
+  var object = objectsById[objectDiv.id];
+  if (hoverObject === object) {
+    objectDiv.classList.remove("hoverSelect");
+    hoverObject = null;
+  }
+}
+
 document.addEventListener("mouseup", function(event) {
   if (draggingObject != null) {
     if (!(draggingObject.x === draggingObjectNewX &&
@@ -170,9 +193,13 @@ document.addEventListener("mouseup", function(event) {
       objectDiv.classList.remove("instantMove");
     }
     draggingObject = null;
+    if (hoverObject != null) {
+      // back to just hovering
+      document.getElementById(hoverObject.id).classList.add("hoverSelect");
+    }
   }
 });
-mainDiv.addEventListener("mousemove", function(event) {
+document.addEventListener("mousemove", function(event) {
   if (draggingObject != null) {
     var object = draggingObject;
     // pixels
@@ -232,9 +259,6 @@ mainDiv.addEventListener("mousemove", function(event) {
     }
   }
 });
-//mainDiv.addEventListener("contextmenu", function(event) {
-//  event.preventDefault();
-//});
 
 var SHIFT = 1;
 var CTRL = 2;
