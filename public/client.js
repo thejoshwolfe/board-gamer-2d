@@ -11,6 +11,7 @@ function initGame() {
   objectsWithSnapZones = [];
   changeHistory = [];
   futureChanges = [];
+  var maxZ = null;
   for (var id in gameDefinition.objects) {
     var objectDefinition = getObjectDefinition(id);
     if (objectDefinition.prototype) continue;
@@ -18,17 +19,22 @@ function initGame() {
       id: id,
       x: objectDefinition.x,
       y: objectDefinition.y,
-      z: objectDefinition.z,
+      z: objectDefinition.z || 0,
       faceIndex: 0,
     };
     objectsById[id] = object;
     if (objectDefinition.snapZones != null) objectsWithSnapZones.push(object);
 
-    mainDiv.insertAdjacentHTML("beforeend", '<img id="'+id+'" class="gameObject">');
-    var objectImg = document.getElementById(object.id);
-    objectImg.addEventListener("mousedown", onObjectMouseDown);
-    render(object);
+    mainDiv.insertAdjacentHTML("beforeend", '<div id="'+id+'" class="gameObject"></div>');
+    var objectDiv = document.getElementById(object.id);
+    objectDiv.addEventListener("mousedown", onObjectMouseDown);
   }
+  var objectsInZOrder = getObjectsInZOrder();
+  // and now reassign all the z's to be unique
+  objectsInZOrder.forEach(function(object, i) {
+    object.z = i;
+    render(object);
+  });
 }
 function getObjectDefinition(id) {
   // resolve prototypes
@@ -43,7 +49,15 @@ function getObjectDefinition(id) {
       if (property === "prototype" && depth !== 0) continue;  // don't inherit this property
       if (property in result) continue; // shadowed
       var value = definition[property];
-      result[property] = value;
+      if (property === "front") {
+        if (result.faces == null) result.faces = [];
+        result.faces[0] = value;
+      } else if (property === "back") {
+        if (result.faces == null) result.faces = [];
+        result.faces[1] = value;
+      } else {
+        result[property] = value;
+      }
     }
     var prototypes = definition.prototypes || [];
     prototypes.forEach(function(id) {
@@ -75,13 +89,13 @@ var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
   event.preventDefault();
-  var objectImg = this;
-  var objectId = objectImg.id;
+  var objectDiv = this;
+  var objectId = objectDiv.id;
   var object = objectsById[objectId];
   if (getObjectDefinition(object.id).movable === false) return;
 
   // begin drag
-  objectImg.classList.add("instantMove");
+  objectDiv.classList.add("instantMove");
   var x = eventToMouseX(event, mainDiv);
   var y = eventToMouseY(event, mainDiv);
   draggingObject = object;
@@ -103,8 +117,8 @@ document.addEventListener("mouseup", function(event) {
           draggingObject.faceIndex === draggingObjectNewFaceIndex)) {
       moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFaceIndex);
 
-      var objectImg = document.getElementById(draggingObject.id);
-      objectImg.classList.remove("instantMove");
+      var objectDiv = document.getElementById(draggingObject.id);
+      objectDiv.classList.remove("instantMove");
     }
     draggingObject = null;
   }
@@ -169,9 +183,9 @@ mainDiv.addEventListener("mousemove", function(event) {
     }
   }
 });
-mainDiv.addEventListener("contextmenu", function(event) {
- event.preventDefault();
-});
+//mainDiv.addEventListener("contextmenu", function(event) {
+//  event.preventDefault();
+//});
 
 var SHIFT = 1;
 var CTRL = 2;
@@ -259,14 +273,45 @@ function render(object) {
     z = draggingObjectNewZ;
     faceIndex = draggingObjectNewFaceIndex;
   }
-  var objectImg = document.getElementById(object.id);
+  var objectDiv = document.getElementById(object.id);
   var objectDefinition = getObjectDefinition(object.id);
-  objectImg.src = objectDefinition.faces[faceIndex];
-  objectImg.style.width = gameDefinition.coordinates.unitWidth * objectDefinition.width;
-  objectImg.style.height = gameDefinition.coordinates.unitHeight * objectDefinition.height;
-  objectImg.style.left = gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth * x;
-  objectImg.style.top = gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
-  objectImg.style.zIndex = z;
+  var facePath = objectDefinition.faces[faceIndex];
+  var pixelX = mainDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
+  var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
+  var pixelWidth = gameDefinition.coordinates.unitWidth * objectDefinition.width;
+  var pixelHeight = gameDefinition.coordinates.unitHeight * objectDefinition.height;
+  var hashIndex = facePath.indexOf("#");
+  var cropInfo = [];
+  if (hashIndex !== -1) cropInfo = facePath.substring(hashIndex + 1).split(",");
+  if (cropInfo.length === 4) {
+    // spritesheet
+    var cropX = parseInt(cropInfo[0], 10);
+    var cropY = parseInt(cropInfo[1], 10);
+    var cropWidth = parseInt(cropInfo[2], 10);
+    var cropHeight = parseInt(cropInfo[3], 10);
+    var scaleX = pixelWidth  / cropWidth;
+    var scaleY = pixelHeight / cropHeight;
+    facePath = facePath.substring(0, hashIndex);
+    objectDiv.style.backgroundSize = "auto";
+    objectDiv.style.backgroundPosition = "-"+cropX+"px -"+cropY+"px";
+    objectDiv.style.width  = cropWidth;
+    objectDiv.style.height = cropHeight;
+    objectDiv.style.transformOrigin = "0px 0px";
+    objectDiv.style.transform = "translate("+pixelX+"px,"+pixelY+"px) scale("+scaleX+","+scaleY+")";
+    objectDiv.style.left = "0px";
+    objectDiv.style.top = "0px";
+  } else {
+    // normal image
+    objectDiv.style.backgroundSize = "100% 100%";
+    objectDiv.style.backgroundPosition = "0px 0px";
+    objectDiv.style.width  = pixelWidth;
+    objectDiv.style.height = pixelHeight;
+    objectDiv.style.transform = "";
+    objectDiv.style.left = pixelX + "px";
+    objectDiv.style.top  = pixelY + "px";
+  }
+  objectDiv.style.backgroundImage = 'url("'+facePath+'")';
+  objectDiv.style.zIndex = z;
 }
 
 function getObjectsInZOrder() {
