@@ -23,18 +23,23 @@ function initGame() {
   futureChanges = [];
   var maxZ = null;
   for (var id in gameDefinition.objects) {
+    if (gameDefinition.objects[id].prototype) continue;
     var objectDefinition = getObjectDefinition(id);
-    if (objectDefinition.prototype) continue;
     if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
     var object = {
       id: id,
       x: objectDefinition.x,
       y: objectDefinition.y,
       z: objectDefinition.z || 0,
+      width: objectDefinition.width,
+      height: objectDefinition.height,
+      faces: objectDefinition.faces,
+      snapZones: objectDefinition.snapZones || [],
+      locked: !!objectDefinition.locked,
       faceIndex: 0,
     };
     objectsById[id] = object;
-    if (objectDefinition.snapZones != null) objectsWithSnapZones.push(object);
+    if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
 
     mainDiv.insertAdjacentHTML("beforeend", '<canvas id="'+id+'" class="gameObject" style="display:none;"></canvas>');
     var objectDiv = document.getElementById(object.id);
@@ -143,7 +148,7 @@ function onObjectMouseDown(event) {
   event.preventDefault();
   var objectDiv = this;
   var object = objectsById[objectDiv.id];
-  if (getObjectDefinition(object.id).movable === false) return;
+  if (object.locked) return;
 
   // begin drag
   objectDiv.classList.add("instantMove");
@@ -167,7 +172,7 @@ function onObjectMouseDown(event) {
 function onObjectMouseMove(event) {
   var objectDiv = this;
   var object = objectsById[objectDiv.id];
-  if (getObjectDefinition(object.id).movable === false) return;
+  if (object.locked) return;
   if (hoverObject !== object) {
     hoverObject = object;
     objectDiv.classList.add("hoverSelect");
@@ -209,7 +214,6 @@ document.addEventListener("mousemove", function(event) {
     var dx = x - draggingMouseStartX;
     var dy = y - draggingMouseStartY;
     // units
-    var objectDefinition = getObjectDefinition(object.id);
     var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
     var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
     // snap zones
@@ -290,16 +294,14 @@ document.addEventListener("keydown", function(event) {
 });
 
 function flipDraggingObject() {
-  var objectDefinition = getObjectDefinition(draggingObject.id);
   draggingObjectNewFaceIndex += 1;
-  if(objectDefinition.faces.length === draggingObjectNewFaceIndex){
+  if(draggingObject.faces.length === draggingObjectNewFaceIndex){
     draggingObjectNewFaceIndex = 0;
   }
   render(draggingObject);
 }
 function rollDraggingObject() {
-  var objectDefinition = getObjectDefinition(draggingObject.id);
-  draggingObjectNewFaceIndex = Math.floor(Math.random() * objectDefinition.faces.length);
+  draggingObjectNewFaceIndex = Math.floor(Math.random() * draggingObject.faces.length);
   render(draggingObject);
 }
 
@@ -348,12 +350,11 @@ function render(object) {
     faceIndex = draggingObjectNewFaceIndex;
   }
   var objectDiv = document.getElementById(object.id);
-  var objectDefinition = getObjectDefinition(object.id);
-  var facePath = objectDefinition.faces[faceIndex];
+  var facePath = object.faces[faceIndex];
   var pixelX = mainDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
   var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
-  var pixelWidth = gameDefinition.coordinates.unitWidth * objectDefinition.width;
-  var pixelHeight = gameDefinition.coordinates.unitHeight * objectDefinition.height;
+  var pixelWidth = gameDefinition.coordinates.unitWidth * object.width;
+  var pixelHeight = gameDefinition.coordinates.unitHeight * object.height;
   var entry = imageCache[facePath];
   objectDiv.width  = entry.width;
   objectDiv.height = entry.height;
