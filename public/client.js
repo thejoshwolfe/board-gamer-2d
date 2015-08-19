@@ -1,6 +1,16 @@
 var mainDiv = document.getElementById("mainDiv");
 var userName = null;
 
+var imageCache = {
+  //"path/to/image.png": {
+  //  img: new Image(),
+  //  x: 0, // for spritesheets
+  //  y: 0,
+  //  width: 100,
+  //  height: 100,
+  //},
+};
+
 var gameDefinition;
 var objectsById;
 var objectsWithSnapZones; // cache
@@ -15,6 +25,7 @@ function initGame() {
   for (var id in gameDefinition.objects) {
     var objectDefinition = getObjectDefinition(id);
     if (objectDefinition.prototype) continue;
+    if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
     var object = {
       id: id,
       x: objectDefinition.x,
@@ -25,7 +36,7 @@ function initGame() {
     objectsById[id] = object;
     if (objectDefinition.snapZones != null) objectsWithSnapZones.push(object);
 
-    mainDiv.insertAdjacentHTML("beforeend", '<div id="'+id+'" class="gameObject"></div>');
+    mainDiv.insertAdjacentHTML("beforeend", '<canvas id="'+id+'" class="gameObject" style="display:none;"></canvas>');
     var objectDiv = document.getElementById(object.id);
     objectDiv.addEventListener("mousedown", onObjectMouseDown);
   }
@@ -33,7 +44,6 @@ function initGame() {
   // and now reassign all the z's to be unique
   objectsInZOrder.forEach(function(object, i) {
     object.z = i;
-    render(object);
   });
 }
 function getObjectDefinition(id) {
@@ -64,6 +74,44 @@ function getObjectDefinition(id) {
       recurse(id, depth + 1);
     });
   }
+}
+function preloadImagePath(path) {
+  var entry = imageCache[path];
+  if (entry != null) return;
+  entry = imageCache[path] = {
+    img: new Image(),
+    x: 0,
+    y: 0,
+    width: null,
+    height: null,
+  };
+  var hashIndex = path.indexOf("#");
+  if (hashIndex !== -1) {
+    cropInfo = path.substring(hashIndex + 1).split(",");
+    if (cropInfo.length !== 4) throw new Error("malformed url: " + path);
+    entry.x = parseInt(cropInfo[0], 10);
+    entry.y = parseInt(cropInfo[1], 10);
+    entry.width = parseInt(cropInfo[2], 10);
+    entry.height = parseInt(cropInfo[3], 10);
+    entry.img.src = path.substring(0, hashIndex);
+  } else {
+    entry.img.src = path;
+  }
+  entry.img.addEventListener("load", function() {
+    if (entry.width == null) {
+      entry.width  = entry.img.naturalWidth;
+      entry.height = entry.img.naturalHeight;
+    }
+    checkForDoneLoading();
+  });
+}
+function checkForDoneLoading() {
+  for (var key in imageCache) {
+    var entry = imageCache[key];
+    if (!entry.img.complete) return; // not done yet
+  }
+  // all done loading
+  getObjectsInZOrder().forEach(render);
 }
 
 function deleteEverything() {
@@ -280,38 +328,15 @@ function render(object) {
   var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
   var pixelWidth = gameDefinition.coordinates.unitWidth * objectDefinition.width;
   var pixelHeight = gameDefinition.coordinates.unitHeight * objectDefinition.height;
-  var hashIndex = facePath.indexOf("#");
-  var cropInfo = [];
-  if (hashIndex !== -1) cropInfo = facePath.substring(hashIndex + 1).split(",");
-  if (cropInfo.length === 4) {
-    // spritesheet
-    var cropX = parseInt(cropInfo[0], 10);
-    var cropY = parseInt(cropInfo[1], 10);
-    var cropWidth = parseInt(cropInfo[2], 10);
-    var cropHeight = parseInt(cropInfo[3], 10);
-    var scaleX = pixelWidth  / cropWidth;
-    var scaleY = pixelHeight / cropHeight;
-    facePath = facePath.substring(0, hashIndex);
-    objectDiv.style.backgroundSize = "auto";
-    objectDiv.style.backgroundPosition = "-"+cropX+"px -"+cropY+"px";
-    objectDiv.style.width  = cropWidth;
-    objectDiv.style.height = cropHeight;
-    objectDiv.style.transformOrigin = "0px 0px";
-    objectDiv.style.transform = "translate("+pixelX+"px,"+pixelY+"px) scale("+scaleX+","+scaleY+")";
-    objectDiv.style.left = "0px";
-    objectDiv.style.top = "0px";
-  } else {
-    // normal image
-    objectDiv.style.backgroundSize = "100% 100%";
-    objectDiv.style.backgroundPosition = "0px 0px";
-    objectDiv.style.width  = pixelWidth;
-    objectDiv.style.height = pixelHeight;
-    objectDiv.style.transform = "";
-    objectDiv.style.left = pixelX + "px";
-    objectDiv.style.top  = pixelY + "px";
-  }
-  objectDiv.style.backgroundImage = 'url("'+facePath+'")';
+  objectDiv.width  = pixelWidth;
+  objectDiv.height = pixelHeight;
+  objectDiv.style.left = pixelX + "px";
+  objectDiv.style.top  = pixelY + "px";
   objectDiv.style.zIndex = z;
+  var context = objectDiv.getContext("2d");
+  var entry = imageCache[facePath];
+  context.drawImage(entry.img, entry.x, entry.y, entry.width, entry.height, 0, 0, pixelWidth, pixelHeight);
+  objectDiv.style.display = "block";
 }
 
 function getObjectsInZOrder() {
