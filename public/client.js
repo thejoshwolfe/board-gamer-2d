@@ -147,6 +147,7 @@ function onObjectMouseDown(event) {
 
   // begin drag
   objectDiv.classList.add("instantMove");
+  objectDiv.classList.add("selected");
   if (hoverObject != null) {
     document.getElementById(hoverObject.id).classList.remove("hoverSelect");
   }
@@ -188,10 +189,10 @@ document.addEventListener("mouseup", function(event) {
           draggingObject.z === draggingObjectNewZ &&
           draggingObject.faceIndex === draggingObjectNewFaceIndex)) {
       moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFaceIndex);
-
-      var objectDiv = document.getElementById(draggingObject.id);
-      objectDiv.classList.remove("instantMove");
     }
+    var objectDiv = document.getElementById(draggingObject.id);
+    objectDiv.classList.remove("instantMove");
+    objectDiv.classList.remove("selected");
     draggingObject = null;
     if (hoverObject != null) {
       // back to just hovering
