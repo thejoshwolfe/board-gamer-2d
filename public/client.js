@@ -328,14 +328,16 @@ function render(object) {
   var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
   var pixelWidth = gameDefinition.coordinates.unitWidth * objectDefinition.width;
   var pixelHeight = gameDefinition.coordinates.unitHeight * objectDefinition.height;
-  objectDiv.width  = pixelWidth;
-  objectDiv.height = pixelHeight;
+  var entry = imageCache[facePath];
+  objectDiv.width  = entry.width;
+  objectDiv.height = entry.height;
   objectDiv.style.left = pixelX + "px";
   objectDiv.style.top  = pixelY + "px";
+  objectDiv.style.width  = pixelWidth;
+  objectDiv.style.height = pixelHeight;
   objectDiv.style.zIndex = z;
   var context = objectDiv.getContext("2d");
-  var entry = imageCache[facePath];
-  context.drawImage(entry.img, entry.x, entry.y, entry.width, entry.height, 0, 0, pixelWidth, pixelHeight);
+  context.drawImage(entry.img, entry.x, entry.y, entry.width, entry.height, 0, 0, entry.width, entry.height);
   objectDiv.style.display = "block";
 }
 
