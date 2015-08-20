@@ -47,9 +47,10 @@ function initGame() {
     objectDiv.addEventListener("mousemove", onObjectMouseMove);
     objectDiv.addEventListener("mouseout", onObjectMouseOut);
   }
-  var objectsInZOrder = getObjectsInZOrder();
   // and now reassign all the z's to be unique
-  objectsInZOrder.forEach(function(object, i) {
+  var objects = getObjects();
+  objects.sort(compareZ);
+  objects.forEach(function(object, i) {
     object.z = i;
   });
   checkForDoneLoading();
@@ -119,7 +120,7 @@ function checkForDoneLoading() {
     if (!entry.img.complete) return; // not done yet
   }
   // all done loading
-  getObjectsInZOrder().forEach(render);
+  getObjects().forEach(render);
 }
 
 function deleteEverything() {
@@ -127,46 +128,69 @@ function deleteEverything() {
   userName = null;
   gameDefinition = null;
   objectsById = null;
+  selectedObjectIdToNewProps = {};
+  // leave the image cache alone
 }
-function bringDraggingObjectToTop() {
-  var objects = getObjectsInZOrder();
-  if (objects[objects.length - 1] !== draggingObject) {
-    draggingObjectNewZ = objects[objects.length - 1].z + 1;
+function bringSelectionToTop() {
+  // effectively do a stable sort.
+  var selection = getEffectiveSelection();
+  var z = null;
+  getObjects().forEach(function(object) {
+    if (object.id in selection) return;
+    if (z == null || object.z > z) z = object.z;
+  });
+  var selectedObjects = [];
+  for (var id in selection) {
+    selectedObjects.push(objectsById[id]);
   }
+  selectedObjects.forEach(function(object) {
+    z += 1;
+    var newProps = selection[object.id];
+    if (newProps.z !== z) {
+      newProps.z = z;
+      // special case rendering for this one property
+      document.getElementById(object.id).style.zIndex = z;
+    }
+  });
+  maybeCommitSelection(selection);
 }
 
+var DRAG_NONE = 0;
+var DRAG_RECTANGLE_SELECT = 1;
+var DRAG_MOVE_SELECTION = 2;
+var draggingMode = DRAG_NONE;
+
+var rectangleSelectStartX;
+var rectangleSelectStartY;
+var rectangleSelectEndX;
+var rectangleSelectEndY;
+var selectedObjectIdToNewProps = {};
+
 var hoverObject;
-var draggingObject;
-var draggingObjectNewX;
-var draggingObjectNewY;
-var draggingObjectNewZ;
-var draggingObjectNewFaceIndex;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
-  event.preventDefault();
   var objectDiv = this;
   var object = objectsById[objectDiv.id];
-  if (object.locked) return;
+  if (object.locked) return; // click thee behind me, satan
+  event.preventDefault();
+  event.stopPropagation();
 
-  // begin drag
-  objectDiv.classList.add("instantMove");
-  objectDiv.classList.add("selected");
+  // select
+  if (selectedObjectIdToNewProps[object.id] == null) {
+    setSelectedObjects([object]);
+  }
   if (hoverObject != null) {
     document.getElementById(hoverObject.id).classList.remove("hoverSelect");
   }
-  var x = eventToMouseX(event, mainDiv);
-  var y = eventToMouseY(event, mainDiv);
-  draggingObject = object;
-  draggingObjectNewX = object.x;
-  draggingObjectNewY = object.y;
-  draggingObjectNewZ = object.z;
-  draggingObjectNewFaceIndex = object.faceIndex;
-  draggingMouseStartX = x;
-  draggingMouseStartY = y;
 
-  bringDraggingObjectToTop();
+  // begin drag
+  draggingMode = DRAG_MOVE_SELECTION;
+  draggingMouseStartX = eventToMouseX(event, mainDiv);
+  draggingMouseStartY = eventToMouseY(event, mainDiv);
+  bringSelectionToTop();
+
   render(object);
 }
 function onObjectMouseMove(event) {
@@ -187,83 +211,163 @@ function onObjectMouseOut(event) {
   }
 }
 
-document.addEventListener("mouseup", function(event) {
-  if (draggingObject != null) {
-    if (!(draggingObject.x === draggingObjectNewX &&
-          draggingObject.y === draggingObjectNewY &&
-          draggingObject.z === draggingObjectNewZ &&
-          draggingObject.faceIndex === draggingObjectNewFaceIndex)) {
-      moveObject(draggingObject, draggingObjectNewX, draggingObjectNewY, draggingObjectNewZ, draggingObjectNewFaceIndex);
-    }
-    var objectDiv = document.getElementById(draggingObject.id);
-    objectDiv.classList.remove("instantMove");
-    objectDiv.classList.remove("selected");
-    draggingObject = null;
-    if (hoverObject != null) {
-      // back to just hovering
-      document.getElementById(hoverObject.id).classList.add("hoverSelect");
-    }
-  }
+mainDiv.addEventListener("mousedown", function(event) {
+  // clicking the table
+  event.preventDefault();
+  draggingMode = DRAG_RECTANGLE_SELECT;
+  rectangleSelectStartX = eventToMouseX(event, mainDiv);
+  rectangleSelectStartY = eventToMouseY(event, mainDiv);
+  setSelectedObjects([]);
 });
+
 document.addEventListener("mousemove", function(event) {
-  if (draggingObject != null) {
-    var object = draggingObject;
+  var x = eventToMouseX(event, mainDiv);
+  var y = eventToMouseY(event, mainDiv);
+  if (draggingMode === DRAG_RECTANGLE_SELECT) {
+    rectangleSelectEndX = x;
+    rectangleSelectEndY = y;
+    renderSelectionRectangle();
+    (function() {
+      var minX = (rectangleSelectStartX - gameDefinition.coordinates.originX) / gameDefinition.coordinates.unitWidth;
+      var minY = (rectangleSelectStartY - gameDefinition.coordinates.originY) / gameDefinition.coordinates.unitHeight;
+      var maxX = (rectangleSelectEndX   - gameDefinition.coordinates.originX) / gameDefinition.coordinates.unitWidth;
+      var maxY = (rectangleSelectEndY   - gameDefinition.coordinates.originY) / gameDefinition.coordinates.unitHeight;
+      if (minX > maxX) { var tmp = maxX; maxX = minX; minX = tmp; }
+      if (minY > maxY) { var tmp = maxY; maxY = minY; minY = tmp; }
+      var newSelectedObjects = [];
+      getObjects().forEach(function(object) {
+        if (object.locked) return;
+        if (object.x > maxX) return;
+        if (object.y > maxY) return;
+        if (object.x + object.width  < minX) return;
+        if (object.y + object.height < minY) return;
+        newSelectedObjects.push(object);
+      });
+      setSelectedObjects(newSelectedObjects);
+    })();
+  } else if (draggingMode === DRAG_MOVE_SELECTION) {
     // pixels
-    var x = eventToMouseX(event, mainDiv);
-    var y = eventToMouseY(event, mainDiv);
     var dx = x - draggingMouseStartX;
     var dy = y - draggingMouseStartY;
-    // units
-    var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
-    var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
-    // snap zones
-    (function() {
-      objectsWithSnapZones.sort(compareZ);
-      for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
-        var containerObject = objectsWithSnapZones[i];
-        var containerRelativeX = objectNewX - containerObject.x;
-        var containerRelativeY = objectNewY - containerObject.y;
-        var containerObjectDefinition = getObjectDefinition(containerObject.id);
-        for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
-          var snapZone = containerObjectDefinition.snapZones[j];
-          var snapZoneRelativeX = containerRelativeX - snapZone.x;
-          var snapZoneRelativeY = containerRelativeY - snapZone.y;
-          if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
-          if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
-          // this is the zone for us
-          var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
-          var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
-          var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
-          var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
-          if (!inBoundsX && !inBoundsY) {
-            // on an outside corner. we need to pick an edge to rub.
-            if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
-              // x is further off
-              inBoundsX = true;
-            } else {
-              // y is further off
-              inBoundsY = true;
+    objectsWithSnapZones.sort(compareZ);
+    Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
+      var object = objectsById[id];
+      var newProps = selectedObjectIdToNewProps[id];
+      // units
+      var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
+      var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
+      // snap zones
+      (function() {
+        for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
+          var containerObject = objectsWithSnapZones[i];
+          var containerRelativeX = objectNewX - containerObject.x;
+          var containerRelativeY = objectNewY - containerObject.y;
+          var containerObjectDefinition = getObjectDefinition(containerObject.id);
+          for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
+            var snapZone = containerObjectDefinition.snapZones[j];
+            var snapZoneRelativeX = containerRelativeX - snapZone.x;
+            var snapZoneRelativeY = containerRelativeY - snapZone.y;
+            if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
+            if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
+            // this is the zone for us
+            var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
+            var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
+            var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
+            var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
+            if (!inBoundsX && !inBoundsY) {
+              // on an outside corner. we need to pick an edge to rub.
+              if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
+                // x is further off
+                inBoundsX = true;
+              } else {
+                // y is further off
+                inBoundsY = true;
+              }
             }
+            if (inBoundsY) {
+              objectNewX = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
+            }
+            if (inBoundsX) {
+              objectNewY = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
+            }
+            return;
           }
-          if (inBoundsY) {
-            objectNewX = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
-          }
-          if (inBoundsX) {
-            objectNewY = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
-          }
-          return;
         }
+      })();
+      if (!(newProps.x === objectNewX &&
+            newProps.y === objectNewY)) {
+        newProps.x = objectNewX;
+        newProps.y = objectNewY;
+        render(object);
       }
-    })();
-
-    if (!(draggingObjectNewX === objectNewX &&
-          draggingObjectNewY === objectNewY)) {
-      draggingObjectNewX = objectNewX;
-      draggingObjectNewY = objectNewY;
-      render(object);
-    }
+    });
+    bringSelectionToTop();
   }
 });
+document.addEventListener("mouseup", function(event) {
+  if (draggingMode === DRAG_RECTANGLE_SELECT) {
+    draggingMode = DRAG_NONE;
+    renderSelectionRectangle();
+  } else if (draggingMode === DRAG_MOVE_SELECTION) {
+    draggingMode = DRAG_NONE;
+    commitSelection(selectedObjectIdToNewProps);
+  }
+});
+
+function setSelectedObjects(objects) {
+  for (var id in selectedObjectIdToNewProps) {
+    var objectDiv = document.getElementById(id);
+    objectDiv.classList.remove("selected");
+  }
+  selectedObjectIdToNewProps = {};
+  objects.forEach(function(object) {
+    selectedObjectIdToNewProps[object.id] = newPropsForObject(object);
+  });
+  for (var id in selectedObjectIdToNewProps) {
+    var objectDiv = document.getElementById(id);
+    objectDiv.classList.add("selected");
+  }
+
+  // TODO: fix this logic
+  if (hoverObject != null) {
+    // back to just hovering
+    document.getElementById(hoverObject.id).classList.add("hoverSelect");
+  }
+}
+function newPropsForObject(object) {
+  return {
+    x: object.x,
+    y: object.y,
+    z: object.z,
+    faceIndex: object.faceIndex,
+  };
+}
+function getEffectiveSelection(objects) {
+  // if you make changes, call maybeCommitSelection
+  if (Object.keys(selectedObjectIdToNewProps).length > 0) return selectedObjectIdToNewProps;
+  if (hoverObject != null) {
+    var effectiveSelection = {};
+    effectiveSelection[hoverObject.id] = newPropsForObject(hoverObject);
+    return effectiveSelection;
+  }
+  return {};
+}
+function maybeCommitSelection(selection) {
+  if (draggingMode === DRAG_MOVE_SELECTION) return; // commit when we let go
+  commitSelection(selection);
+}
+function commitSelection(selection) {
+  for (var id in selection) {
+    var object = objectsById[id];
+    var newProps = selection[id];
+    if (!(object.x === newProps.x &&
+          object.y === newProps.y &&
+          object.z === newProps.z &&
+          object.faceIndex === newProps.faceIndex)) {
+      moveObject(object, newProps.x, newProps.y, newProps.z, newProps.faceIndex);
+    }
+  }
+}
 
 var SHIFT = 1;
 var CTRL = 2;
@@ -276,14 +380,14 @@ document.addEventListener("keydown", function(event) {
   );
   switch (event.keyCode) {
     case "R".charCodeAt(0):
-      if (draggingObject != null && modifierMask === 0) { rollDraggingObject(); break; }
+      if (modifierMask === 0) { rollDraggingObject(); break; }
       return;
     case "F".charCodeAt(0):
-      if (draggingObject != null && modifierMask === 0) { flipDraggingObject(); break; }
+      if (modifierMask === 0) { flipOverSelection(); break; }
       return;
     case "Z".charCodeAt(0):
-      if (draggingObject == null && modifierMask === CTRL)       { undo(); break; }
-      if (draggingObject == null && modifierMask === CTRL|SHIFT) { redo(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === CTRL)       { undo(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === CTRL|SHIFT) { redo(); break; }
       return;
     case "Y".charCodeAt(0):
       if (modifierMask === CTRL) { redo(); break; }
@@ -293,16 +397,28 @@ document.addEventListener("keydown", function(event) {
   event.preventDefault();
 });
 
-function flipDraggingObject() {
-  draggingObjectNewFaceIndex += 1;
-  if(draggingObject.faces.length === draggingObjectNewFaceIndex){
-    draggingObjectNewFaceIndex = 0;
+function flipOverSelection() {
+  var selection = getEffectiveSelection();
+  for (var id in selection) {
+    var object = objectsById[id];
+    var newProps = selection[id];
+    newProps.faceIndex += 1;
+    if (object.faces.length === newProps.faceIndex) {
+      newProps.faceIndex = 0;
+    }
+    render(object);
   }
-  render(draggingObject);
+  maybeCommitSelection(selection);
 }
 function rollDraggingObject() {
-  draggingObjectNewFaceIndex = Math.floor(Math.random() * draggingObject.faces.length);
-  render(draggingObject);
+  var selection = getEffectiveSelection();
+  for (var id in selection) {
+    var object = objectsById[id];
+    var newProps = selection[id];
+    newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
+    render(object);
+  }
+  maybeCommitSelection(selection);
 }
 
 function undo() {
@@ -320,7 +436,7 @@ function reverseChange(change) {
   object.y = change.args.from.y;
   object.z = change.args.from.z;
   object.faceIndex = change.args.from.faceIndex;
-  render(object);
+  render(object, true);
 
   var newChange = JSON.parse(JSON.stringify(change));
   var tmp = newChange.args.from;
@@ -338,16 +454,17 @@ function pushChangeToHistory(change) {
 function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
-function render(object) {
+function render(object, isAnimated) {
   var x = object.x;
   var y = object.y;
   var z = object.z;
   var faceIndex = object.faceIndex;
-  if (object === draggingObject) {
-    x = draggingObjectNewX;
-    y = draggingObjectNewY;
-    z = draggingObjectNewZ;
-    faceIndex = draggingObjectNewFaceIndex;
+  var newProps = selectedObjectIdToNewProps[object.id];
+  if (newProps != null) {
+    x = newProps.x;
+    y = newProps.y;
+    z = newProps.z;
+    faceIndex = newProps.faceIndex;
   }
   var objectDiv = document.getElementById(object.id);
   var facePath = object.faces[faceIndex];
@@ -356,6 +473,11 @@ function render(object) {
   var pixelWidth = gameDefinition.coordinates.unitWidth * object.width;
   var pixelHeight = gameDefinition.coordinates.unitHeight * object.height;
   var entry = imageCache[facePath];
+  if (isAnimated) {
+    objectDiv.classList.add("animatedMovement");
+  } else {
+    objectDiv.classList.remove("animatedMovement");
+  }
   objectDiv.width  = entry.width;
   objectDiv.height = entry.height;
   objectDiv.style.left = pixelX + "px";
@@ -367,12 +489,47 @@ function render(object) {
   context.drawImage(entry.img, entry.x, entry.y, entry.width, entry.height, 0, 0, entry.width, entry.height);
   objectDiv.style.display = "block";
 }
+function renderSelectionRectangle() {
+  var selectionRectangleDiv = document.getElementById("selectionRectangleDiv");
+  if (draggingMode === DRAG_RECTANGLE_SELECT) {
+    var x = rectangleSelectStartX;
+    var y = rectangleSelectStartY;
+    var width  = rectangleSelectEndX - rectangleSelectStartX;
+    var height = rectangleSelectEndY - rectangleSelectStartY;
+    var borderWidth = parseInt(selectionRectangleDiv.style.borderWidth);
+    if (width >= 0) {
+      width -= 2 * borderWidth;
+    } else {
+      width *= -1;
+      x -= width;
+    }
+    if (height >= 0) {
+      height -= 2 * borderWidth;
+    } else {
+      height *= -1;
+      y -= height;
+    }
+    if (height <= 0) height = 1;
+    if (width  <= 0) width  = 1;
+    selectionRectangleDiv.style.left = (mainDiv.offsetLeft + x) + "px";
+    selectionRectangleDiv.style.top  = (mainDiv.offsetTop  + y) + "px";
+    selectionRectangleDiv.style.width  = width  + "px";
+    selectionRectangleDiv.style.height = height + "px";
+    selectionRectangleDiv.style.display = "block";
+  } else {
+    selectionRectangleDiv.style.display = "none";
+  }
+}
 
-function getObjectsInZOrder() {
+function getObjects() {
   var objects = [];
   for (var objectId in objectsById) {
     objects.push(objectsById[objectId]);
   }
+  return objects;
+}
+function getObjectsInZOrder() {
+  var objects = [];
   objects.sort(compareZ);
   return objects;
 }
@@ -404,7 +561,6 @@ function moveObject(object, x, y, z, faceIndex) {
   object.y = y;
   object.z = z;
   object.faceIndex = faceIndex;
-  render(object);
 }
 
 var socket;
@@ -483,7 +639,7 @@ function handleMessage(message) {
       object.y = message.args.to.y;
       object.z = message.args.to.z;
       object.faceIndex = message.args.to.faceIndex;
-      render(object);
+      render(object, true);
       break;
     default:
       console.log("unknown command:", message.cmd);
