@@ -357,6 +357,7 @@ function maybeCommitSelection(selection) {
   commitSelection(selection);
 }
 function commitSelection(selection) {
+  var messages = [];
   for (var id in selection) {
     var object = objectsById[id];
     var newProps = selection[id];
@@ -364,8 +365,42 @@ function commitSelection(selection) {
           object.y === newProps.y &&
           object.z === newProps.z &&
           object.faceIndex === newProps.faceIndex)) {
-      moveObject(object, newProps.x, newProps.y, newProps.z, newProps.faceIndex);
+      var message = {
+        cmd: "moveObject",
+        user: userName,
+        args: {
+          id: object.id,
+          from: {
+            x: object.x,
+            y: object.y,
+            z: object.z,
+            faceIndex: object.faceIndex,
+          },
+          to: {
+            x: newProps.x,
+            y: newProps.y,
+            z: newProps.z,
+            faceIndex: newProps.faceIndex,
+          },
+        },
+      };
+      messages.push(message);
+      pushChangeToHistory(message);
+      // anticipate
+      object.x = newProps.x;
+      object.y = newProps.y;
+      object.z = newProps.z;
+      object.faceIndex = newProps.faceIndex;
     }
+  }
+  if (messages.length === 1) {
+    sendMessage(messages[0]);
+  } else if (messages.length > 1) {
+    sendMessage({
+      cmd: "multi",
+      user: userName,
+      args: messages,
+    });
   }
 }
 
@@ -539,29 +574,6 @@ function compareZ(a, b) {
 function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-function moveObject(object, x, y, z, faceIndex) {
-  var args = {
-    id: object.id,
-    from: {
-      x: object.x,
-      y: object.y,
-      z: object.z,
-      faceIndex: object.faceIndex,
-    },
-    to: {
-      x: x,
-      y: y,
-      z: z,
-      faceIndex: faceIndex,
-    },
-  };
-  sendCommand("moveObject", args);
-  // anticipate
-  object.x = x;
-  object.y = y;
-  object.z = z;
-  object.faceIndex = faceIndex;
-}
 
 var socket;
 var isConnected = false;
@@ -610,11 +622,6 @@ function connectionEstablished() {
 function connectionLost() {
   console.log("disconnected");
   deleteEverything();
-}
-function sendCommand(cmd, args) {
-  var message = {cmd:cmd, user:userName, args:args};
-  pushChangeToHistory(message);
-  sendMessage(message);
 }
 function sendMessage(message) {
   socket.send(JSON.stringify(message));
