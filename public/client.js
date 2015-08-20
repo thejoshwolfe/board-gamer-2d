@@ -152,7 +152,7 @@ function bringSelectionToTop() {
       document.getElementById(object.id).style.zIndex = z;
     }
   });
-  maybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection);
 }
 
 var DRAG_NONE = 0;
@@ -343,7 +343,7 @@ function newPropsForObject(object) {
   };
 }
 function getEffectiveSelection(objects) {
-  // if you make changes, call maybeCommitSelection
+  // if you make changes, call renderAndMaybeCommitSelection
   if (Object.keys(selectedObjectIdToNewProps).length > 0) return selectedObjectIdToNewProps;
   if (hoverObject != null) {
     var effectiveSelection = {};
@@ -352,9 +352,22 @@ function getEffectiveSelection(objects) {
   }
   return {};
 }
-function maybeCommitSelection(selection) {
+function renderAndMaybeCommitSelection(selection) {
   if (draggingMode === DRAG_MOVE_SELECTION) return; // commit when we let go
+  var objectsToRender = [];
+  // render
+  for (var id in selection) {
+    var object = objectsById[id];
+    var newProps = selection[id];
+    if (!(object.x === newProps.x &&
+          object.y === newProps.y &&
+          object.z === newProps.z &&
+          object.faceIndex === newProps.faceIndex)) {
+      objectsToRender.push(object);
+    }
+  }
   commitSelection(selection);
+  objectsToRender.forEach(render);
 }
 function commitSelection(selection) {
   var messages = [];
@@ -443,7 +456,7 @@ function flipOverSelection() {
     }
     render(object);
   }
-  maybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection);
 }
 function rollDraggingObject() {
   var selection = getEffectiveSelection();
@@ -453,7 +466,7 @@ function rollDraggingObject() {
     newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
     render(object);
   }
-  maybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection);
 }
 
 function undo() {
