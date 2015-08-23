@@ -47,7 +47,7 @@ function initGame() {
     objectDiv.addEventListener("mousemove", onObjectMouseMove);
     objectDiv.addEventListener("mouseout", onObjectMouseOut);
   }
-  // and now reassign all the z's to be unique
+  // reassign all the z's to be unique
   var objects = getObjects();
   objects.sort(compareZ);
   objects.forEach(function(object, i) {
@@ -78,10 +78,11 @@ function getObjectDefinition(id) {
         result[property] = value;
       }
     }
-    var prototypes = definition.prototypes || [];
-    prototypes.forEach(function(id) {
-      recurse(id, depth + 1);
-    });
+    if (definition.prototypes != null) {
+      definition.prototypes.forEach(function(id) {
+        recurse(id, depth + 1);
+      });
+    }
   }
 }
 function preloadImagePath(path) {
@@ -212,6 +213,7 @@ function onObjectMouseOut(event) {
 }
 
 mainDiv.addEventListener("mousedown", function(event) {
+  if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
   draggingMode = DRAG_RECTANGLE_SELECT;
@@ -328,10 +330,14 @@ function setSelectedObjects(objects) {
     objectDiv.classList.add("selected");
   }
 
-  // TODO: fix this logic
   if (hoverObject != null) {
-    // back to just hovering
-    document.getElementById(hoverObject.id).classList.add("hoverSelect");
+    if (hoverObject.id in selectedObjectIdToNewProps) {
+      // better than hovering
+      document.getElementById(hoverObject.id).classList.remove("hoverSelect");
+    } else {
+      // back to just hovering
+      document.getElementById(hoverObject.id).classList.add("hoverSelect");
+    }
   }
 }
 function newPropsForObject(object) {
