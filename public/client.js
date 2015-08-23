@@ -404,7 +404,6 @@ function commitSelection(selection) {
         },
       };
       messages.push(message);
-      pushChangeToHistory(message);
       // anticipate
       object.x = newProps.x;
       object.y = newProps.y;
@@ -412,15 +411,20 @@ function commitSelection(selection) {
       object.faceIndex = newProps.faceIndex;
     }
   }
-  if (messages.length === 1) {
-    sendMessage(messages[0]);
+  var message;
+  if (messages.length === 0) {
+    return;
+  } else if (messages.length === 1) {
+    message = messages[0];
   } else if (messages.length > 1) {
-    sendMessage({
+    message = {
       cmd: "multi",
       user: userName,
       args: messages,
-    });
+    };
   }
+  sendMessage(message);
+  pushChangeToHistory(message);
 }
 
 var SHIFT = 1;
@@ -477,28 +481,45 @@ function rollDraggingObject() {
 
 function undo() {
   if (changeHistory.length === 0) return;
-  futureChanges.push(reverseChange(changeHistory.pop()));
+  var newMessage = reverseChange(changeHistory.pop());
+  sendMessage(newMessage);
+  futureChanges.push(newMessage);
 }
 function redo() {
   if (futureChanges.length === 0) return;
-  changeHistory.push(reverseChange(futureChanges.pop()));
+  var newMessage = reverseChange(futureChanges.pop());
+  sendMessage(newMessage);
+  changeHistory.push(newMessage);
 }
 function reverseChange(change) {
-  if (change.cmd !== "moveObject") throw asdf;
-  var object = objectsById[change.args.id];
-  object.x = change.args.from.x;
-  object.y = change.args.from.y;
-  object.z = change.args.from.z;
-  object.faceIndex = change.args.from.faceIndex;
-  render(object, true);
+  if (change.cmd === "multi") {
+    var newArgs = change.args.map(reverseChange);
+    var newChange = {cmd:"multi", user:userName, args:newArgs};
+    sendMessage(newChange);
+    return newChange;
+  } else if (change.cmd === "moveObject") {
+    var object = objectsById[change.args.id];
+    object.x = change.args.from.x;
+    object.y = change.args.from.y;
+    object.z = change.args.from.z;
+    object.faceIndex = change.args.from.faceIndex;
+    var newProps = selectedObjectIdToNewProps[object.id];
+    if (newProps != null) {
+      newProps.x = change.args.from.x;
+      newProps.y = change.args.from.y;
+      newProps.z = change.args.from.z;
+      newProps.faceIndex = change.args.from.faceIndex;
+    }
+    render(object, true);
 
-  var newChange = JSON.parse(JSON.stringify(change));
-  var tmp = newChange.args.from;
-  newChange.args.from = newChange.args.to;
-  newChange.args.to = tmp;
-  newChange.user = userName;
-  sendMessage(newChange);
-  return newChange;
+    var newChange = JSON.parse(JSON.stringify(change));
+    var tmp = newChange.args.from;
+    newChange.args.from = newChange.args.to;
+    newChange.args.to = tmp;
+    newChange.user = userName;
+    sendMessage(newChange);
+    return newChange;
+  } else throw asdf;
 }
 function pushChangeToHistory(change) {
   changeHistory.push(change);
