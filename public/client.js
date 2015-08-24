@@ -17,7 +17,6 @@ function initGame() {
   objectsWithSnapZones = [];
   changeHistory = [];
   futureChanges = [];
-  var maxZ = null;
   for (var id in gameDefinition.objects) {
     if (gameDefinition.objects[id].prototype) continue;
     var objectDefinition = getObjectDefinition(id);
@@ -140,19 +139,11 @@ function bringSelectionToTop() {
     if (object.id in selection) return;
     if (z == null || object.z > z) z = object.z;
   });
-  var selectedObjects = [];
   for (var id in selection) {
-    selectedObjects.push(objectsById[id]);
-  }
-  selectedObjects.forEach(function(object) {
     z += 1;
-    var newProps = selection[object.id];
-    if (newProps.z !== z) {
-      newProps.z = z;
-      // special case rendering for this one property
-      getObjectDiv(object.id).style.zIndex = z;
-    }
-  });
+    var newProps = selection[id];
+    newProps.z = z;
+  }
   renderAndMaybeCommitSelection(selection);
 }
 
