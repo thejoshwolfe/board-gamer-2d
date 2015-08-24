@@ -1,14 +1,10 @@
 var mainDiv = document.getElementById("mainDiv");
 var userName = null;
 
-var imageCache = {
-  //"path/to/image.png": {
-  //  img: new Image(),
-  //  x: 0, // for spritesheets
-  //  y: 0,
-  //  width: 100,
-  //  height: 100,
-  //},
+var facePathToUrlUrl = {
+  //"face1.png": "", // loading...
+  //"face2.png": 'url("face2.png")',
+  //"face3.png#0,0,32,32": 'url("data://...")',
 };
 
 var gameDefinition;
@@ -41,8 +37,12 @@ function initGame() {
     objectsById[id] = object;
     if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
 
-    mainDiv.insertAdjacentHTML("beforeend", '<canvas id="'+id+'" class="gameObject" style="display:none;"></canvas>');
-    var objectDiv = document.getElementById(object.id);
+    mainDiv.insertAdjacentHTML("beforeend",
+      '<div id="object-'+id+'" data-id="'+id+'" class="gameObject" style="display:none;">' +
+        '<div id="stackHeight-'+id+'" class="stackHeight" style="display:none;"></div>' +
+      '</div>'
+    );
+    var objectDiv = getObjectDiv(object.id);
     objectDiv.addEventListener("mousedown", onObjectMouseDown);
     objectDiv.addEventListener("mousemove", onObjectMouseMove);
     objectDiv.addEventListener("mouseout", onObjectMouseOut);
@@ -86,39 +86,39 @@ function getObjectDefinition(id) {
   }
 }
 function preloadImagePath(path) {
-  var entry = imageCache[path];
-  if (entry != null) return;
-  entry = imageCache[path] = {
-    img: new Image(),
-    x: 0,
-    y: 0,
-    width: null,
-    height: null,
-  };
+  var url = facePathToUrlUrl[path];
+  if (url != null) return; // already loaded or loading
+  facePathToUrlUrl[path] = ""; // loading...
+  var img = new Image();
   var hashIndex = path.indexOf("#");
   if (hashIndex !== -1) {
-    cropInfo = path.substring(hashIndex + 1).split(",");
+    var cropInfo = path.substring(hashIndex + 1).split(",");
     if (cropInfo.length !== 4) throw new Error("malformed url: " + path);
-    entry.x = parseInt(cropInfo[0], 10);
-    entry.y = parseInt(cropInfo[1], 10);
-    entry.width = parseInt(cropInfo[2], 10);
-    entry.height = parseInt(cropInfo[3], 10);
-    entry.img.src = path.substring(0, hashIndex);
+    img.src = path.substring(0, hashIndex);
   } else {
-    entry.img.src = path;
+    img.src = path;
   }
-  entry.img.addEventListener("load", function() {
-    if (entry.width == null) {
-      entry.width  = entry.img.naturalWidth;
-      entry.height = entry.img.naturalHeight;
+  img.addEventListener("load", function() {
+    if (cropInfo != null) {
+      var x = parseInt(cropInfo[0], 10);
+      var y = parseInt(cropInfo[1], 10);
+      var width = parseInt(cropInfo[2], 10);
+      var height = parseInt(cropInfo[3], 10);
+      var canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      var context = canvas.getContext("2d");
+      context.drawImage(img, x, y, width, height, 0, 0, width, height);
+      facePathToUrlUrl[path] = 'url("'+canvas.toDataURL()+'")';
+    } else {
+      facePathToUrlUrl[path] = 'url("'+path+'")';
     }
     checkForDoneLoading();
   });
 }
 function checkForDoneLoading() {
-  for (var key in imageCache) {
-    var entry = imageCache[key];
-    if (!entry.img.complete) return; // not done yet
+  for (var key in facePathToUrlUrl) {
+    if (facePathToUrlUrl[key] === "") return; // not done yet
   }
   // all done loading
   getObjects().forEach(render);
@@ -150,7 +150,7 @@ function bringSelectionToTop() {
     if (newProps.z !== z) {
       newProps.z = z;
       // special case rendering for this one property
-      document.getElementById(object.id).style.zIndex = z;
+      getObjectDiv(object.id).style.zIndex = z;
     }
   });
   renderAndMaybeCommitSelection(selection);
@@ -173,7 +173,7 @@ var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
   var objectDiv = this;
-  var object = objectsById[objectDiv.id];
+  var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
@@ -183,7 +183,7 @@ function onObjectMouseDown(event) {
     setSelectedObjects([object]);
   }
   if (hoverObject != null) {
-    document.getElementById(hoverObject.id).classList.remove("hoverSelect");
+    getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
   }
 
   // begin drag
@@ -196,7 +196,7 @@ function onObjectMouseDown(event) {
 }
 function onObjectMouseMove(event) {
   var objectDiv = this;
-  var object = objectsById[objectDiv.id];
+  var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return;
   if (hoverObject !== object) {
     hoverObject = object;
@@ -205,7 +205,7 @@ function onObjectMouseMove(event) {
 }
 function onObjectMouseOut(event) {
   var objectDiv = this;
-  var object = objectsById[objectDiv.id];
+  var object = objectsById[objectDiv.dataset.id];
   if (hoverObject === object) {
     objectDiv.classList.remove("hoverSelect");
     hoverObject = null;
@@ -318,7 +318,7 @@ document.addEventListener("mouseup", function(event) {
 
 function setSelectedObjects(objects) {
   for (var id in selectedObjectIdToNewProps) {
-    var objectDiv = document.getElementById(id);
+    var objectDiv = getObjectDiv(id);
     objectDiv.classList.remove("selected");
   }
   selectedObjectIdToNewProps = {};
@@ -326,17 +326,17 @@ function setSelectedObjects(objects) {
     selectedObjectIdToNewProps[object.id] = newPropsForObject(object);
   });
   for (var id in selectedObjectIdToNewProps) {
-    var objectDiv = document.getElementById(id);
+    var objectDiv = getObjectDiv(id);
     objectDiv.classList.add("selected");
   }
 
   if (hoverObject != null) {
     if (hoverObject.id in selectedObjectIdToNewProps) {
       // better than hovering
-      document.getElementById(hoverObject.id).classList.remove("hoverSelect");
+      getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
     } else {
       // back to just hovering
-      document.getElementById(hoverObject.id).classList.add("hoverSelect");
+      getObjectDiv(hoverObject.id).classList.add("hoverSelect");
     }
   }
 }
@@ -541,28 +541,45 @@ function render(object, isAnimated) {
     z = newProps.z;
     faceIndex = newProps.faceIndex;
   }
-  var objectDiv = document.getElementById(object.id);
+  var objectDiv = getObjectDiv(object.id);
   var facePath = object.faces[faceIndex];
   var pixelX = mainDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
   var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
   var pixelWidth = gameDefinition.coordinates.unitWidth * object.width;
   var pixelHeight = gameDefinition.coordinates.unitHeight * object.height;
-  var entry = imageCache[facePath];
+  var imageUrlUrl = facePathToUrlUrl[facePath];
   if (isAnimated) {
     objectDiv.classList.add("animatedMovement");
   } else {
     objectDiv.classList.remove("animatedMovement");
   }
-  objectDiv.width  = entry.width;
-  objectDiv.height = entry.height;
   objectDiv.style.left = pixelX + "px";
   objectDiv.style.top  = pixelY + "px";
   objectDiv.style.width  = pixelWidth;
   objectDiv.style.height = pixelHeight;
   objectDiv.style.zIndex = z;
-  var context = objectDiv.getContext("2d");
-  context.drawImage(entry.img, entry.x, entry.y, entry.width, entry.height, 0, 0, entry.width, entry.height);
+  objectDiv.style.backgroundImage = imageUrlUrl;
   objectDiv.style.display = "block";
+
+  // O(n^2) - we'll optimize later
+  var coveredObjects = getObjects().filter(function(otherObject) {
+    if (otherObject.width  !== object.width)  return false;
+    if (otherObject.height !== object.height) return false;
+    var otherProps = selectedObjectIdToNewProps[otherObject.id];
+    if (otherProps == null) otherProps = otherObject;
+    if (otherProps.x !== x) return false;
+    if (otherProps.y !== y) return false;
+    if (otherProps.z > z) return false; // only objects we're covering
+    return true;
+  });
+  var stackHeightDiv = document.getElementById("stackHeight-" + object.id);
+  if (coveredObjects.length > 1) {
+    // this includes myself
+    stackHeightDiv.textContent = coveredObjects.length.toString();
+    stackHeightDiv.style.display = "block";
+  } else {
+    stackHeightDiv.style.display = "none";
+  }
 }
 function renderSelectionRectangle() {
   var selectionRectangleDiv = document.getElementById("selectionRectangleDiv");
@@ -702,17 +719,8 @@ function generateRandomId() {
   }
   return result;
 }
-function roundToFactor(n, factor) {
-  // roundToFactor(1.49,  1)    => 1
-  // roundToFactor(1.5,   1)    => 2
-  // roundToFactor(1.49,  2)    => 2
-  // roundToFactor(1.49,  3)    => 0
-  // roundToFactor(13,    2)    => 14
-  // roundToFactor(13,    3)    => 12
-  // roundToFactor(0.625, 0.25) => 0.75
-  // roundToFactor(x,     0)    => x
-  if (factor === 0) return n;
-  return Math.round(n / factor) * factor;
+function getObjectDiv(id) {
+  return document.getElementById("object-" + id);
 }
 
 connectToServer();
