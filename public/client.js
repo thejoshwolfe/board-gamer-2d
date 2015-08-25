@@ -135,11 +135,7 @@ function deleteEverything() {
 function bringSelectionToTop() {
   // effectively do a stable sort.
   var selection = getEffectiveSelection();
-  var z = null;
-  getObjects().forEach(function(object) {
-    if (object.id in selection) return;
-    if (z == null || object.z > z) z = object.z;
-  });
+  var z = findMaxZ(selection);
   var newPropses = [];
   for (var id in selection) {
     newPropses.push(selection[id]);
@@ -149,6 +145,14 @@ function bringSelectionToTop() {
     newProps.z = z + i + 1;
   });
   renderAndMaybeCommitSelection(selection);
+}
+function findMaxZ(excludingSelection) {
+  var z = null;
+  getObjects().forEach(function(object) {
+    if (excludingSelection != null && object.id in excludingSelection) return;
+    if (z == null || object.z > z) z = object.z;
+  });
+  return z;
 }
 
 var DRAG_NONE = 0;
@@ -162,11 +166,13 @@ var rectangleSelectEndX;
 var rectangleSelectEndY;
 var selectedObjectIdToNewProps = {};
 
+var examiningObject = null;
 var hoverObject;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
+  if (examiningObject != null) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return; // click thee behind me, satan
@@ -176,9 +182,6 @@ function onObjectMouseDown(event) {
   // select
   if (selectedObjectIdToNewProps[object.id] == null) {
     setSelectedObjects([object]);
-  }
-  if (hoverObject != null) {
-    getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
   }
 
   // begin drag
@@ -191,20 +194,17 @@ function onObjectMouseDown(event) {
   renderOrder();
 }
 function onObjectMouseMove(event) {
+  if (draggingMode != DRAG_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return;
-  if (hoverObject !== object) {
-    hoverObject = object;
-    objectDiv.classList.add("hoverSelect");
-  }
+  setHoverObject(object);
 }
 function onObjectMouseOut(event) {
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
   if (hoverObject === object) {
-    objectDiv.classList.remove("hoverSelect");
-    hoverObject = null;
+    setHoverObject(null);
   }
 }
 
@@ -212,6 +212,7 @@ mainDiv.addEventListener("mousedown", function(event) {
   if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
+  if (examiningObject != null) return;
   draggingMode = DRAG_RECTANGLE_SELECT;
   rectangleSelectStartX = eventToMouseX(event, mainDiv);
   rectangleSelectStartY = eventToMouseY(event, mainDiv);
@@ -312,6 +313,17 @@ document.addEventListener("mouseup", function(event) {
   }
 });
 
+function setHoverObject(object) {
+  if (hoverObject == object) return;
+  if (examiningObject != null) return;
+  if (hoverObject != null) {
+    getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
+  }
+  hoverObject = object;
+  if (hoverObject != null) {
+    getObjectDiv(hoverObject.id).classList.add("hoverSelect");
+  }
+}
 function setSelectedObjects(objects) {
   for (var id in selectedObjectIdToNewProps) {
     var objectDiv = getObjectDiv(id);
@@ -427,12 +439,15 @@ function commitSelection(selection) {
 var SHIFT = 1;
 var CTRL = 2;
 var ALT = 4;
-document.addEventListener("keydown", function(event) {
-  var modifierMask = (
+function getModifierMask(event) {
+  return (
     (event.shiftKey ? SHIFT : 0) |
     (event.ctrlKey ? CTRL : 0) |
     (event.altKey ? ALT : 0)
   );
+}
+document.addEventListener("keydown", function(event) {
+  var modifierMask = getModifierMask(event);
   switch (event.keyCode) {
     case "R".charCodeAt(0):
       if (modifierMask === 0) { rollDraggingObject(); break; }
@@ -441,12 +456,23 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
     case "Z".charCodeAt(0):
-      if (draggingMode === DRAG_NONE && modifierMask === CTRL)       { undo(); break; }
-      if (draggingMode === DRAG_NONE && modifierMask === CTRL|SHIFT) { redo(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
+      if (modifierMask === 0) { examineHoverObject(); break; }
       return;
     case "Y".charCodeAt(0):
       if (modifierMask === CTRL) { redo(); break; }
       return;
+    default: return;
+  }
+  event.preventDefault();
+});
+document.addEventListener("keyup", function(event) {
+  var modifierMask = getModifierMask(event);
+  switch (event.keyCode) {
+    case "Z".charCodeAt(0):
+      unexamine();
+      break;
     default: return;
   }
   event.preventDefault();
@@ -475,6 +501,19 @@ function rollDraggingObject() {
     render(object);
   }
   renderAndMaybeCommitSelection(selection);
+  renderOrder();
+}
+function examineHoverObject() {
+  if (hoverObject == null) return;
+  if (examiningObject != null) return; // ignore key repeat
+  if (draggingMode !== DRAG_NONE) return; // TODO: we probably want this someday
+  examiningObject = hoverObject;
+  renderExaminingObject();
+}
+function unexamine() {
+  if (examiningObject == null) return;
+  render(examiningObject, true);
+  examiningObject = null;
   renderOrder();
 }
 
@@ -563,6 +602,31 @@ function render(object, isAnimated) {
   }
   objectDiv.style.display = "block";
 }
+function renderExaminingObject() {
+  var object = examiningObject;
+  var windowWidth  = window.innerWidth;
+  var windowHeight = window.innerHeight;
+  var windowAspectRatio = windowWidth / windowHeight;
+  var objectDiv = getObjectDiv(object.id);
+  var objectAspectRatio = object.width / object.height;
+  var bigWidth;
+  var bigHeight;
+  if (windowAspectRatio < objectAspectRatio) {
+    bigWidth  = windowWidth;
+    bigHeight = windowWidth  / objectAspectRatio;
+  } else {
+    bigWidth  = windowHeight * objectAspectRatio;
+    bigHeight = windowHeight;
+  }
+  objectDiv.classList.add("animatedMovement");
+  objectDiv.style.left = (windowWidth  - bigWidth)  / 2;
+  objectDiv.style.top  = (windowHeight - bigHeight) / 2;
+  objectDiv.style.width  = bigWidth;
+  objectDiv.style.height = bigHeight;
+  objectDiv.style.zIndex = findMaxZ() + 1;
+  var stackHeightDiv = getStackHeightDiv(object.id);
+  stackHeightDiv.style.display = "none";
+}
 function renderOrder() {
   var sizeAndLocationToIdAndZList = {};
   getObjects().forEach(function(object) {
@@ -577,7 +641,7 @@ function renderOrder() {
     var idAndZList = sizeAndLocationToIdAndZList[key];
     idAndZList.sort(compareZ);
     idAndZList.forEach(function(idAndZ, i) {
-      var stackHeightDiv = document.getElementById("stackHeight-" + idAndZ.id);
+      var stackHeightDiv = getStackHeightDiv(idAndZ.id);
       if (i > 0) {
         stackHeightDiv.textContent = (i + 1).toString();
         stackHeightDiv.style.display = "block";
@@ -739,6 +803,9 @@ function generateRandomId() {
 }
 function getObjectDiv(id) {
   return document.getElementById("object-" + id);
+}
+function getStackHeightDiv(id) {
+  return document.getElementById("stackHeight-" + id);
 }
 
 connectToServer();
