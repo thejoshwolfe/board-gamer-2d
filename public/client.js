@@ -121,6 +121,7 @@ function checkForDoneLoading() {
   }
   // all done loading
   getObjects().forEach(render);
+  renderOrder();
 }
 
 function deleteEverything() {
@@ -184,6 +185,7 @@ function onObjectMouseDown(event) {
   bringSelectionToTop();
 
   render(object);
+  renderOrder();
 }
 function onObjectMouseMove(event) {
   var objectDiv = this;
@@ -294,7 +296,7 @@ document.addEventListener("mousemove", function(event) {
         render(object);
       }
     });
-    bringSelectionToTop();
+    renderOrder();
   }
 });
 document.addEventListener("mouseup", function(event) {
@@ -365,6 +367,7 @@ function renderAndMaybeCommitSelection(selection) {
   }
   commitSelection(selection);
   objectsToRender.forEach(render);
+  renderOrder();
 }
 function commitSelection(selection) {
   var messages = [];
@@ -458,6 +461,7 @@ function flipOverSelection() {
     render(object);
   }
   renderAndMaybeCommitSelection(selection);
+  renderOrder();
 }
 function rollDraggingObject() {
   var selection = getEffectiveSelection();
@@ -468,17 +472,20 @@ function rollDraggingObject() {
     render(object);
   }
   renderAndMaybeCommitSelection(selection);
+  renderOrder();
 }
 
 function undo() {
   if (changeHistory.length === 0) return;
   var newMessage = reverseChange(changeHistory.pop());
+  renderOrder();
   sendMessage(newMessage);
   futureChanges.push(newMessage);
 }
 function redo() {
   if (futureChanges.length === 0) return;
   var newMessage = reverseChange(futureChanges.pop());
+  renderOrder();
   sendMessage(newMessage);
   changeHistory.push(newMessage);
 }
@@ -549,27 +556,34 @@ function render(object, isAnimated) {
   objectDiv.style.width  = pixelWidth;
   objectDiv.style.height = pixelHeight;
   objectDiv.style.zIndex = z;
-  objectDiv.style.backgroundImage = imageUrlUrl;
+  if (objectDiv.dataset.facePath !== facePath) {
+    objectDiv.dataset.facePath = facePath;
+    objectDiv.style.backgroundImage = imageUrlUrl;
+  }
   objectDiv.style.display = "block";
-
-  // O(n^2) - we'll optimize later
-  var coveredObjects = getObjects().filter(function(otherObject) {
-    if (otherObject.width  !== object.width)  return false;
-    if (otherObject.height !== object.height) return false;
-    var otherProps = selectedObjectIdToNewProps[otherObject.id];
-    if (otherProps == null) otherProps = otherObject;
-    if (otherProps.x !== x) return false;
-    if (otherProps.y !== y) return false;
-    if (otherProps.z > z) return false; // only objects we're covering
-    return true;
+}
+function renderOrder() {
+  var sizeAndLocationToObjects = {};
+  getObjects().forEach(function(object) {
+    var newProps = selectedObjectIdToNewProps[object.id];
+    if (newProps == null) newProps = object;
+    var key = [newProps.x, newProps.y, object.width, object.height].join(",");
+    var objects = sizeAndLocationToObjects[key];
+    if (objects == null) objects = sizeAndLocationToObjects[key] = [];
+    objects.push(object);
   });
-  var stackHeightDiv = document.getElementById("stackHeight-" + object.id);
-  if (coveredObjects.length > 1) {
-    // this includes myself
-    stackHeightDiv.textContent = coveredObjects.length.toString();
-    stackHeightDiv.style.display = "block";
-  } else {
-    stackHeightDiv.style.display = "none";
+  for (var key in sizeAndLocationToObjects) {
+    var objects = sizeAndLocationToObjects[key];
+    objects.sort(compareZ);
+    objects.forEach(function(object, i) {
+      var stackHeightDiv = document.getElementById("stackHeight-" + object.id);
+      if (i > 0) {
+        stackHeightDiv.textContent = (i + 1).toString();
+        stackHeightDiv.style.display = "block";
+      } else {
+        stackHeightDiv.style.display = "none";
+      }
+    });
   }
 }
 function renderSelectionRectangle() {
@@ -651,6 +665,7 @@ function connectToServer() {
     console.log(msg);
     var message = JSON.parse(msg);
     handleMessage(message);
+    renderOrder();
   }
   function timeoutThenCreateNew() {
     socket.removeEventListener('error', timeoutThenCreateNew, false);
