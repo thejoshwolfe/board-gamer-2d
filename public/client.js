@@ -496,7 +496,6 @@ function reverseChange(change) {
   if (change.cmd === "multi") {
     var newArgs = change.args.map(reverseChange);
     var newChange = {cmd:"multi", user:userName, args:newArgs};
-    sendMessage(newChange);
     return newChange;
   } else if (change.cmd === "moveObject") {
     var object = objectsById[change.args.id];
@@ -518,7 +517,6 @@ function reverseChange(change) {
     newChange.args.from = newChange.args.to;
     newChange.args.to = tmp;
     newChange.user = userName;
-    sendMessage(newChange);
     return newChange;
   } else throw asdf;
 }
@@ -566,20 +564,20 @@ function render(object, isAnimated) {
   objectDiv.style.display = "block";
 }
 function renderOrder() {
-  var sizeAndLocationToObjects = {};
+  var sizeAndLocationToIdAndZList = {};
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
     var key = [newProps.x, newProps.y, object.width, object.height].join(",");
-    var objects = sizeAndLocationToObjects[key];
-    if (objects == null) objects = sizeAndLocationToObjects[key] = [];
-    objects.push(object);
+    var idAndZList = sizeAndLocationToIdAndZList[key];
+    if (idAndZList == null) idAndZList = sizeAndLocationToIdAndZList[key] = [];
+    idAndZList.push({id:object.id, z:newProps.z});
   });
-  for (var key in sizeAndLocationToObjects) {
-    var objects = sizeAndLocationToObjects[key];
-    objects.sort(compareZ);
-    objects.forEach(function(object, i) {
-      var stackHeightDiv = document.getElementById("stackHeight-" + object.id);
+  for (var key in sizeAndLocationToIdAndZList) {
+    var idAndZList = sizeAndLocationToIdAndZList[key];
+    idAndZList.sort(compareZ);
+    idAndZList.forEach(function(idAndZ, i) {
+      var stackHeightDiv = document.getElementById("stackHeight-" + idAndZ.id);
       if (i > 0) {
         stackHeightDiv.textContent = (i + 1).toString();
         stackHeightDiv.style.display = "block";
