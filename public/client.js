@@ -668,7 +668,6 @@ function connectToServer() {
     console.log(msg);
     var message = JSON.parse(msg);
     handleMessage(message);
-    renderOrder();
   }
   function timeoutThenCreateNew() {
     socket.removeEventListener('error', timeoutThenCreateNew, false);
@@ -693,29 +692,41 @@ function sendMessage(message) {
   socket.send(JSON.stringify(message));
 }
 function handleMessage(message) {
-  switch (message.cmd) {
-    case "login":
-      userName = message.args;
-      break;
-    case "game":
-      gameDefinition = message.args;
-      initGame();
-      break;
-    case "multi":
-      message.args.forEach(handleMessage);
-      break;
-    case "moveObject":
-      if (message.user === userName) return;
-      pushChangeToHistory(message);
-      var object = objectsById[message.args.id];
-      object.x = message.args.to.x;
-      object.y = message.args.to.y;
-      object.z = message.args.to.z;
-      object.faceIndex = message.args.to.faceIndex;
-      render(object, true);
-      break;
-    default:
-      console.log("unknown command:", message.cmd);
+  var objectsToRender = [];
+  var storeInHistory = false;
+  executeMessage(message);
+
+  objectsToRender.forEach(function(object) {
+    render(object, true);
+  });
+  renderOrder();
+  if (storeInHistory) pushChangeToHistory(message);
+
+  function executeMessage(message) {
+    switch (message.cmd) {
+      case "login":
+        userName = message.args;
+        break;
+      case "game":
+        gameDefinition = message.args;
+        initGame();
+        break;
+      case "multi":
+        message.args.forEach(executeMessage);
+        break;
+      case "moveObject":
+        if (message.user === userName) return;
+        storeInHistory = true;
+        var object = objectsById[message.args.id];
+        object.x = message.args.to.x;
+        object.y = message.args.to.y;
+        object.z = message.args.to.z;
+        object.faceIndex = message.args.to.faceIndex;
+        objectsToRender.push(object);
+        break;
+      default:
+        console.log("unknown command:", message.cmd);
+    }
   }
 }
 
