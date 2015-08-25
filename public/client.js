@@ -458,7 +458,7 @@ document.addEventListener("keydown", function(event) {
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
       if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
-      if (modifierMask === 0) { examineHoverObject(); break; }
+      if (modifierMask === 0) { examine(); break; }
       return;
     case "Y".charCodeAt(0):
       if (modifierMask === CTRL) { redo(); break; }
@@ -503,17 +503,28 @@ function rollDraggingObject() {
   renderAndMaybeCommitSelection(selection);
   renderOrder();
 }
-function examineHoverObject() {
-  if (hoverObject == null) return;
+function examine() {
   if (examiningObject != null) return; // ignore key repeat
-  if (draggingMode !== DRAG_NONE) return; // TODO: we probably want this someday
-  examiningObject = hoverObject;
+  if (hoverObject != null) {
+    examiningObject = hoverObject;
+  } else if (draggingMode === DRAG_MOVE_SELECTION) {
+    var loneObject = null;
+    for (var id in selectedObjectIdToNewProps) {
+      if (loneObject != null) return; // too many objects selected
+      loneObject = objectsById[id];
+    }
+    if (loneObject == null) throw asdf; // always dragging a selection
+      examiningObject = loneObject;
+  } else {
+    return;
+  }
   renderExaminingObject();
 }
 function unexamine() {
   if (examiningObject == null) return;
-  render(examiningObject, true);
+  var object = examiningObject;
   examiningObject = null;
+  render(object, true);
   renderOrder();
 }
 
@@ -568,6 +579,7 @@ function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBound
 function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
 
 function render(object, isAnimated) {
+  if (object === examiningObject) return; // different handling for this
   var x = object.x;
   var y = object.y;
   var z = object.z;
@@ -641,6 +653,7 @@ function renderOrder() {
     var idAndZList = sizeAndLocationToIdAndZList[key];
     idAndZList.sort(compareZ);
     idAndZList.forEach(function(idAndZ, i) {
+      if (examiningObject != null && examiningObject.id === idAndZ.id) return;
       var stackHeightDiv = getStackHeightDiv(idAndZ.id);
       if (i > 0) {
         stackHeightDiv.textContent = (i + 1).toString();
