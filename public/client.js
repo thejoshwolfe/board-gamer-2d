@@ -140,11 +140,14 @@ function bringSelectionToTop() {
     if (object.id in selection) return;
     if (z == null || object.z > z) z = object.z;
   });
+  var newPropses = [];
   for (var id in selection) {
-    z += 1;
-    var newProps = selection[id];
-    newProps.z = z;
+    newPropses.push(selection[id]);
   }
+  newPropses.sort(compareZ);
+  newPropses.forEach(function(newProps, i) {
+    newProps.z = z + i + 1;
+  });
   renderAndMaybeCommitSelection(selection);
 }
 
