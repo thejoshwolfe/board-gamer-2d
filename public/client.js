@@ -559,7 +559,7 @@ function render(object, isAnimated) {
   objectDiv.style.width  = pixelWidth;
   objectDiv.style.height = pixelHeight;
   objectDiv.style.zIndex = z;
-  if (objectDiv.dataset.facePath !== facePath) {
+  if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
     objectDiv.dataset.facePath = facePath;
     objectDiv.style.backgroundImage = imageUrlUrl;
   }
