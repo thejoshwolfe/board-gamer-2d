@@ -452,6 +452,9 @@ document.addEventListener("keydown", function(event) {
     case "R".charCodeAt(0):
       if (modifierMask === 0) { rollDraggingObject(); break; }
       return;
+    case "S".charCodeAt(0):
+      if (modifierMask === 0) { shuffleDraggingObject(); break; }
+      return; 
     case "F".charCodeAt(0):
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
@@ -498,6 +501,26 @@ function rollDraggingObject() {
     var object = objectsById[id];
     var newProps = selection[id];
     newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
+    render(object);
+  }
+  renderAndMaybeCommitSelection(selection);
+  renderOrder();
+}
+function shuffleDraggingObject() {
+  var locArray = [];
+  var selection = getEffectiveSelection();
+  for (var id in selection) {
+    var newProps = selection[id];
+    locArray.push(newProps);
+  }
+  for(var i = 0;i<locArray.length;i++){
+    var otherIndex = (Math.floor(Math.random()*(locArray.length-i))+i)
+    var tempZ = locArray[i].z;
+    locArray[i].z = locArray[otherIndex].z;
+    locArray[otherIndex].z = tempZ;
+  }
+  for (var id in selection) {
+    var object = objectsById[id];
     render(object);
   }
   renderAndMaybeCommitSelection(selection);
