@@ -513,9 +513,15 @@ function shuffleDraggingObject() {
     var newProps = selection[id];
     locArray.push(newProps);
   }
-  for(var i = 0;i<locArray.length;i++){
-    var otherIndex = (Math.floor(Math.random()*(locArray.length-i))+i)
+  for (var i = 0; i < locArray.length; i++) {
+    var otherIndex = Math.floor(Math.random() * (locArray.length - i)) + i;
+    var tempX = locArray[i].x;
+    var tempY = locArray[i].y;
     var tempZ = locArray[i].z;
+    locArray[i].x = locArray[otherIndex].x;
+    locArray[otherIndex].x = tempX;
+    locArray[i].y = locArray[otherIndex].y;
+    locArray[otherIndex].y = tempY;
     locArray[i].z = locArray[otherIndex].z;
     locArray[otherIndex].z = tempZ;
   }
