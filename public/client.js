@@ -458,6 +458,10 @@ document.addEventListener("keydown", function(event) {
     case "F".charCodeAt(0):
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
+    case 27: //ESC
+      if (draggingMode === DRAG_MOVE_SELECTION && modifierMask === 0) { cancelMove(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === 0){ deselect(); break; }
+      return;
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
       if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
@@ -505,6 +509,23 @@ function rollDraggingObject() {
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
+}
+function cancelMove() {
+  var selection = selectedObjectIdToNewProps;
+  for (var id in selection) {
+    var object = objectsById[id];
+    var newProps = selection[id];
+    newProps.x = object.x;
+    newProps.y = object.y;
+    newProps.z = object.z;
+    newProps.faceIndex = object.faceIndex;
+    render(object,true);
+  }
+  draggingMode = DRAG_NONE;
+  renderOrder();
+}
+function deselect() {
+  setSelectedObjects([]);
 }
 function shuffleDraggingObject() {
   var locArray = [];
