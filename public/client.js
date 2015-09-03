@@ -450,17 +450,17 @@ document.addEventListener("keydown", function(event) {
   var modifierMask = getModifierMask(event);
   switch (event.keyCode) {
     case "R".charCodeAt(0):
-      if (modifierMask === 0) { rollDraggingObject(); break; }
+      if (modifierMask === 0) { rollSelection(); break; }
       return;
     case "S".charCodeAt(0):
-      if (modifierMask === 0) { shuffleDraggingObject(); break; }
+      if (modifierMask === 0) { shuffleSelection(); break; }
       return; 
     case "F".charCodeAt(0):
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
-    case 27: //ESC
+    case 27: // Escape
       if (draggingMode === DRAG_MOVE_SELECTION && modifierMask === 0) { cancelMove(); break; }
-      if (draggingMode === DRAG_NONE && modifierMask === 0){ deselect(); break; }
+      if (draggingMode === DRAG_NONE && modifierMask === 0) { setSelectedObjects([]); break; }
       return;
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
@@ -499,7 +499,7 @@ function flipOverSelection() {
   renderAndMaybeCommitSelection(selection);
   renderOrder();
 }
-function rollDraggingObject() {
+function rollSelection() {
   var selection = getEffectiveSelection();
   for (var id in selection) {
     var object = objectsById[id];
@@ -524,31 +524,23 @@ function cancelMove() {
   draggingMode = DRAG_NONE;
   renderOrder();
 }
-function deselect() {
-  setSelectedObjects([]);
-}
-function shuffleDraggingObject() {
-  var locArray = [];
+function shuffleSelection() {
+  var newPropsArray = [];
   var selection = getEffectiveSelection();
   for (var id in selection) {
-    var newProps = selection[id];
-    locArray.push(newProps);
+    newPropsArray.push(selection[id]);
   }
-  for (var i = 0; i < locArray.length; i++) {
-    var otherIndex = Math.floor(Math.random() * (locArray.length - i)) + i;
-    var tempX = locArray[i].x;
-    var tempY = locArray[i].y;
-    var tempZ = locArray[i].z;
-    locArray[i].x = locArray[otherIndex].x;
-    locArray[otherIndex].x = tempX;
-    locArray[i].y = locArray[otherIndex].y;
-    locArray[otherIndex].y = tempY;
-    locArray[i].z = locArray[otherIndex].z;
-    locArray[otherIndex].z = tempZ;
-  }
-  for (var id in selection) {
-    var object = objectsById[id];
-    render(object);
+  for (var i = 0; i < newPropsArray.length; i++) {
+    var otherIndex = Math.floor(Math.random() * (newPropsArray.length - i)) + i;
+    var tempX = newPropsArray[i].x;
+    var tempY = newPropsArray[i].y;
+    var tempZ = newPropsArray[i].z;
+    newPropsArray[i].x = newPropsArray[otherIndex].x;
+    newPropsArray[i].y = newPropsArray[otherIndex].y;
+    newPropsArray[i].z = newPropsArray[otherIndex].z;
+    newPropsArray[otherIndex].x = tempX;
+    newPropsArray[otherIndex].y = tempY;
+    newPropsArray[otherIndex].z = tempZ;
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
