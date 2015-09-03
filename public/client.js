@@ -367,7 +367,6 @@ function getEffectiveSelection(objects) {
   return {};
 }
 function renderAndMaybeCommitSelection(selection) {
-  if (draggingMode === DRAG_MOVE_SELECTION) return; // commit when we let go
   var objectsToRender = [];
   // render
   for (var id in selection) {
@@ -380,7 +379,11 @@ function renderAndMaybeCommitSelection(selection) {
       objectsToRender.push(object);
     }
   }
-  commitSelection(selection);
+  if (draggingMode === DRAG_NONE) {
+    // if we're dragging, don't commit yet
+    commitSelection(selection);
+  }
+  // now that we've possibly committed a temporary selection, we can render.
   objectsToRender.forEach(render);
   renderOrder();
 }
@@ -494,7 +497,6 @@ function flipOverSelection() {
     if (object.faces.length === newProps.faceIndex) {
       newProps.faceIndex = 0;
     }
-    render(object);
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
@@ -505,7 +507,6 @@ function rollSelection() {
     var object = objectsById[id];
     var newProps = selection[id];
     newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
-    render(object);
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
@@ -525,8 +526,24 @@ function cancelMove() {
   renderOrder();
 }
 function shuffleSelection() {
+  var selection;
+  if (Object.keys(selectedObjectIdToNewProps).length > 0) {
+    // real selection
+    selection = selectedObjectIdToNewProps;
+  } else if (hoverObject != null) {
+    // select all objects we're hovering over in this stack
+    var stackId = getStackId(hoverObject, hoverObject);
+    selection = {};
+    getObjects().forEach(function(object) {
+      if (stackId !== getStackId(object, object)) return;
+      selection[object.id] = newPropsForObject(object);
+    });
+  } else {
+    // no selection
+    return;
+  }
+
   var newPropsArray = [];
-  var selection = getEffectiveSelection();
   for (var id in selection) {
     newPropsArray.push(selection[id]);
   }
@@ -686,7 +703,7 @@ function renderOrder() {
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
-    var key = [newProps.x, newProps.y, object.width, object.height].join(",");
+    var key = getStackId(newProps, object);
     var idAndZList = sizeAndLocationToIdAndZList[key];
     if (idAndZList == null) idAndZList = sizeAndLocationToIdAndZList[key] = [];
     idAndZList.push({id:object.id, z:newProps.z});
@@ -705,6 +722,9 @@ function renderOrder() {
       }
     });
   }
+}
+function getStackId(newProps, object) {
+  return [newProps.x, newProps.y, object.width, object.height].join(",");
 }
 function renderSelectionRectangle() {
   var selectionRectangleDiv = document.getElementById("selectionRectangleDiv");
