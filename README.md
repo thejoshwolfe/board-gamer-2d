@@ -6,6 +6,7 @@
 
 Working:
 
+ * Create and join rooms. Empty rooms are deleted after an hour.
  * Multiplayer drag and drop objects around on the table.
  * Shuffle a deck of cards, roll dice.
  * Some objects are "locked" to serve as a background.
@@ -15,6 +16,7 @@ Working:
 Planned:
 
  * Multiplayer gameplay:
+   * Usernames and a list of who's in the room.
    * A "hand" of cards that you can see and others can't.
    * A command to spread a stack of cards to look at all the cards side-by-side.
    * Spawn textboxes on the table that everyone can see and edit.
@@ -31,12 +33,6 @@ Planned:
    * A "box" with objects relevant to your game that are not currently on the table.
    * Define a fixed limit for number of players, and assign each player a unique color. Objects can be associated with each player.
    * Define no limit on the number of players. Players would be listed in a scrolling box, and each player gets a mini-table defined by a template.
- * Homepage will have two options:
-   * Create a new room: which generates a random room code.
-   * Join room: Type in a room code. And then:
-     * Spectate, or
-     * Type in your name (trim whitespace, non-blank), and pick a color that hasn't been chosen yet.
-     * Show a list of players and spectators alreday in the room.
 
 ## Philosophy
 
