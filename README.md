@@ -27,6 +27,7 @@ Planned:
    * Number counters for keeping track of score. Basic calculator functions, like add and subtract.
    * A "turn order" widget that accepts a hotkey for "my turn is done", and plays a sound for the next player.
    * A stopwatch widget and a timer widget.
+   * An interactive undo/redo tree explorer.
    * Sound effects?
  * Workshop for creating your own games:
    * Any player can switch in and out of workshop mode while playing a game.

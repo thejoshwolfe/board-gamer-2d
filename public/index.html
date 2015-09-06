@@ -15,10 +15,10 @@
         padding: 0.2em;
         background-color: rgba(224,224,224,0.5);
         font-size: 10pt; font-family: monospace;
-        text-align: center;
       }
       .roomCode {
         font-size: 20pt; font-weight: bold; font-family: monospace;
+        text-align: center;
       }
       .gameObject {
         position: absolute;
@@ -45,6 +45,14 @@
         left: 50%; top: 50%;
         transform: translate(-50%, -50%);
       }
+      input[type="button"] {
+        font-size: 15pt;
+      }
+      ul {
+        margin: 0px;
+        padding: 0px;
+        list-style-type: none;
+      }
     </style>
   </head>
   <body>
@@ -61,12 +69,17 @@
         Ctrl+Y or Ctrl+Shift+Z: Redo.<br>
       </div>
       <div id="roomInfoDiv">
-        Room Code:<br><span id="roomCodeSpan" class="roomCode">???</span>
+        <span style="text-align: center;">Room Code:</span><br><span id="roomCodeSpan" class="roomCode">???</span>
+        <ul id="userListUl"></ul>
       </div>
     </div>
-    <div id="loginDiv" style="display: none;">
-      <p>Join a Room: <input id="roomCodeTextbox" class="roomCode" placeholder="Room Code"> <input id="joinRoomButton" type="button" value="Join"></p>
+    <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt;">
       <p><input id="createRoomButton" type="button" value="Create a Room"></p>
+      <p>
+        Join a Room:
+        <input id="roomCodeTextbox" placeholder="Room Code" class="roomCode" maxlength=5 style="width: 7em;">
+        <input id="joinRoomButton" type="button" value="Join">
+      </p>
     </div>
     <div id="loadingDiv">
       <p id="loadingMessageDiv">Please wait...</p>

@@ -1,7 +1,6 @@
 
 var roomCode = null;
-var userId = null;
-var userName = "";
+var myUser;
 
 var SCREEN_MODE_DISCONNECTED = 0;
 var SCREEN_MODE_LOGIN = 1;
@@ -69,6 +68,8 @@ function setScreenMode(newMode) {
 }
 
 var tableDiv = document.getElementById("tableDiv");
+
+var usersById = {};
 
 var facePathToUrlUrl = {
   //"face1.png": "", // loading...
@@ -206,6 +207,7 @@ function deleteTableAndEverything() {
   tableDiv.innerHTML = "";
   gameDefinition = null;
   objectsById = null;
+  usersById = {};
   selectedObjectIdToNewProps = {};
   // leave the image cache alone
 }
@@ -475,7 +477,7 @@ function commitSelection(selection) {
           object.faceIndex === newProps.faceIndex)) {
       var message = {
         cmd: "moveObject",
-        user: userId,
+        user: myUser.id,
         args: {
           id: object.id,
           from: {
@@ -508,7 +510,7 @@ function commitSelection(selection) {
   } else if (messages.length > 1) {
     message = {
       cmd: "multi",
-      user: userId,
+      user: myUser.id,
       args: messages,
     };
   } else throw asdf;
@@ -681,7 +683,7 @@ function redo() {
 function reverseChange(change) {
   if (change.cmd === "multi") {
     var newArgs = change.args.map(reverseChange);
-    var newChange = {cmd:"multi", user:userId, args:newArgs};
+    var newChange = {cmd:"multi", user:myUser.id, args:newArgs};
     return newChange;
   } else if (change.cmd === "moveObject") {
     var object = objectsById[change.args.id];
@@ -702,7 +704,7 @@ function reverseChange(change) {
     var tmp = newChange.args.from;
     newChange.args.from = newChange.args.to;
     newChange.args.to = tmp;
-    newChange.user = userId;
+    newChange.user = myUser.id;
     return newChange;
   } else throw asdf;
 }
@@ -713,6 +715,16 @@ function pushChangeToHistory(change) {
 
 function eventToMouseX(event, div) { return event.clientX - div.getBoundingClientRect().left; }
 function eventToMouseY(event, div) { return event.clientY - div.getBoundingClientRect().top; }
+
+function renderUserList() {
+  var userListUl = document.getElementById("userListUl");
+  var userIds = Object.keys(usersById);
+  userIds.sort();
+  console.log(userIds);
+  userListUl.innerHTML = userIds.map(function(userId) {
+    return "<li>" + sanitizeHtml(usersById[userId].userName) + "</li>";
+  }).join("");
+}
 
 function render(object, isAnimated) {
   if (object === examiningObject) return; // different handling for this
@@ -881,22 +893,20 @@ function connectToServer() {
   function onOpen() {
     isConnected = true;
     console.log("connected");
-    var salutationMessage;
+    var roomCodeToSend = roomCode;
     if (roomCode != null) {
-      salutationMessage = {
-        cmd: "joinRoom",
-        args: {
-          roomCode: roomCode,
-        },
-      };
+      roomCodeToSend = roomCode;
       setScreenMode(SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION);
     } else {
-      salutationMessage = {
-        cmd: "createRoom",
-      };
+      roomCodeToSend = "new";
       setScreenMode(SCREEN_MODE_WAITING_FOR_CREATE_ROOM);
     }
-    sendMessage(salutationMessage);
+    sendMessage({
+      cmd: "joinRoom",
+      args: {
+        roomCode: roomCodeToSend,
+      },
+    });
   }
   function onMessage(event) {
     var msg = event.data;
@@ -908,31 +918,47 @@ function connectToServer() {
     }
     console.log(msg);
     var message = JSON.parse(msg);
-    if (screenMode === SCREEN_MODE_WAITING_FOR_CREATE_ROOM) {
-      if (message.cmd === "createRoom") {
-        roomCode = message.args.roomCode;
-        userId = message.args.userId;
-        userName = message.args.userName;
-        initGame(message.args.game, message.args.history);
-        setScreenMode(SCREEN_MODE_PLAY);
-      } else throw asdf;
-    } else if (screenMode === SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION) {
-      if (message.cmd === "joinRoom") {
-        // success
-        userId = message.args.userId;
-        userName = message.args.userName;
-        initGame(message.args.game, message.args.history);
-        setScreenMode(SCREEN_MODE_PLAY);
-      } else if (message.cmd === "badRoomCode") {
-        // failure
-        disconnect();
-        setScreenMode(SCREEN_MODE_LOGIN);
-        // TODO: show message that says we tried
-        return;
-      } else throw asdf;
-    } else if (screenMode === SCREEN_MODE_PLAY) {
-      handleMessage(message, true);
-    } else throw asdf;
+    if (screenMode === SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
+      // nice try
+      disconnect();
+      setScreenMode(SCREEN_MODE_LOGIN);
+      // TODO: show message that says we tried
+      return;
+    }
+    switch (screenMode) {
+      case SCREEN_MODE_WAITING_FOR_CREATE_ROOM:
+      case SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION:
+        if (message.cmd === "joinRoom") {
+          roomCode = message.args.roomCode;
+          myUser = {
+            id: message.args.userId,
+            userName: message.args.userName,
+          };
+          usersById[myUser.id] = myUser;
+          initGame(message.args.game, message.args.history);
+          message.args.users.forEach(function(otherUser) {
+            usersById[otherUser.id] = otherUser;
+          });
+          renderUserList();
+          setScreenMode(SCREEN_MODE_PLAY);
+        } else throw asdf;
+        break;
+      case SCREEN_MODE_PLAY:
+        if (message.cmd === "userJoined") {
+          usersById[message.args.id] = {
+            id: message.args.id,
+            userName: message.args.userName,
+          };
+          renderUserList();
+        } else if (message.cmd === "userLeft") {
+          delete usersById[message.args.id];
+          renderUserList();
+        } else {
+          handleMessage(message, true);
+        }
+        break;
+      default: throw asdf;
+    }
   }
   function timeoutThenCreateNew() {
     removeListeners();
@@ -980,7 +1006,7 @@ function handleMessage(message, shouldRender) {
         message.args.forEach(executeMessage);
         break;
       case "moveObject":
-        if (message.user === userId) return;
+        if (message.user === myUser.id) return;
         storeInHistory = true;
         var object = objectsById[message.args.id];
         object.x = message.args.to.x;
@@ -1012,6 +1038,10 @@ function getStackHeightDiv(id) {
 }
 function setDivVisible(div, visible) {
   div.style.display = visible ? "block" : "none";
+}
+
+function sanitizeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 }
 
 setScreenMode(SCREEN_MODE_LOGIN);
