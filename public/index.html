@@ -2,10 +2,23 @@
   <head>
     <title>Board Gamer 2d</title>
     <style>
-      #mainDiv {
+      #tableDiv {
         background-color: #0a0;
         height: 800px;
         width: 800px;
+      }
+      #roomInfoDiv {
+        position: fixed;
+        top: 0px;
+        left: 100%;
+        transform: translateX(-100%);
+        padding: 0.2em;
+        background-color: rgba(224,224,224,0.5);
+        font-size: 10pt; font-family: monospace;
+        text-align: center;
+      }
+      .roomCode {
+        font-size: 20pt; font-weight: bold; font-family: monospace;
       }
       .gameObject {
         position: absolute;
@@ -35,16 +48,28 @@
     </style>
   </head>
   <body>
-    <div id="mainDiv"></div>
-    <div id="selectionRectangleDiv" style="position:absolute; display:none; border:4px dotted #aaa; pointer-events: none;"></div>
-    <div>
-      Controls:<br>
-      F: Flip object over or turn to next side.<br>
-      R: Roll/flip object to show random side.<br>
-      S: Shuffle.<br>
-      Z: Examine object.<br>
-      Ctrl+Z: Undo.<br>
-      Ctrl+Y or Ctrl+Shift+Z: Redo.<br>
+    <div id="roomDiv" style="display:none;">
+      <div id="tableDiv"></div>
+      <div id="selectionRectangleDiv" style="position:absolute; display:none; border:4px dotted #aaa; pointer-events: none;"></div>
+      <div>
+        Controls:<br>
+        F: Flip object over or turn to next side.<br>
+        R: Roll/flip object to show random side.<br>
+        S: Shuffle.<br>
+        Z: Examine object.<br>
+        Ctrl+Z: Undo.<br>
+        Ctrl+Y or Ctrl+Shift+Z: Redo.<br>
+      </div>
+      <div id="roomInfoDiv">
+        Room Code:<br><span id="roomCodeSpan" class="roomCode">???</span>
+      </div>
+    </div>
+    <div id="loginDiv" style="display: none;">
+      <p>Join a Room: <input id="roomCodeTextbox" class="roomCode" placeholder="Room Code"> <input id="joinRoomButton" type="button" value="Join"></p>
+      <p><input id="createRoomButton" type="button" value="Create a Room"></p>
+    </div>
+    <div id="loadingDiv">
+      <p id="loadingMessageDiv">Please wait...</p>
     </div>
     <script src="client.js"></script>
   </body>

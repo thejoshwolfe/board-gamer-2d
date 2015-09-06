@@ -1,5 +1,74 @@
-var mainDiv = document.getElementById("mainDiv");
-var userName = null;
+
+var roomCode = null;
+var userId = null;
+var userName = "";
+
+var SCREEN_MODE_DISCONNECTED = 0;
+var SCREEN_MODE_LOGIN = 1;
+var SCREEN_MODE_WAITING_FOR_SERVER_CONNECT = 2;
+var SCREEN_MODE_WAITING_FOR_CREATE_ROOM = 3;
+var SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION = 4;
+var SCREEN_MODE_PLAY = 5;
+var screenMode = SCREEN_MODE_LOGIN;
+
+document.getElementById("createRoomButton").addEventListener("click", function() {
+  roomCode = null;
+  connectToServer();
+});
+document.getElementById("roomCodeTextbox").addEventListener("keydown", function(event) {
+  event.stopPropagation();
+  if (event.keyCode === 13) {
+    setTimeout(submitRoomCode, 0);
+  } else {
+    setTimeout(function() {
+      var textbox = document.getElementById("roomCodeTextbox");
+      var value = textbox.value;
+      var canonicalValue = value.toUpperCase();
+      if (value === canonicalValue) return;
+      var selectionStart = textbox.selectionStart;
+      var selectionEnd = textbox.selectionEnd;
+      textbox.value = canonicalValue;
+      textbox.selectionStart = selectionStart;
+      textbox.selectionEnd = selectionEnd;
+    }, 0);
+  }
+});
+document.getElementById("joinRoomButton").addEventListener("click", submitRoomCode);
+function submitRoomCode() {
+  roomCode = document.getElementById("roomCodeTextbox").value;
+  connectToServer();
+}
+
+function setScreenMode(newMode) {
+  screenMode = newMode;
+  var loadingMessage = null;
+  var activeDivId = (function() {
+    switch (screenMode) {
+      case SCREEN_MODE_PLAY: return "roomDiv";
+      case SCREEN_MODE_LOGIN: return "loginDiv";
+      case SCREEN_MODE_DISCONNECTED:
+        loadingMessage = "Disconnected...";
+        return "loadingDiv";
+      case SCREEN_MODE_WAITING_FOR_SERVER_CONNECT:
+        loadingMessage = "Trying to reach the server...";
+        return "loadingDiv";
+      case SCREEN_MODE_WAITING_FOR_CREATE_ROOM:
+        loadingMessage = "Waiting for a new room...";
+        return "loadingDiv";
+      case SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION:
+        loadingMessage = "Checking room code...";
+        return "loadingDiv";
+      default: throw asdf;
+    }
+  })();
+  ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
+    setDivVisible(document.getElementById(divId), divId === activeDivId);
+  });
+  if (activeDivId === "loginDiv") document.getElementById("roomCodeTextbox").focus();
+  document.getElementById("loadingMessageDiv").textContent = loadingMessage != null ? loadingMessage : "Please wait...";
+}
+
+var tableDiv = document.getElementById("tableDiv");
 
 var facePathToUrlUrl = {
   //"face1.png": "", // loading...
@@ -12,7 +81,8 @@ var objectsById;
 var objectsWithSnapZones; // cache
 var changeHistory;
 var futureChanges;
-function initGame() {
+function initGame(game, history) {
+  gameDefinition = game;
   objectsById = {};
   objectsWithSnapZones = [];
   changeHistory = [];
@@ -36,7 +106,7 @@ function initGame() {
     objectsById[id] = object;
     if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
 
-    mainDiv.insertAdjacentHTML("beforeend",
+    tableDiv.insertAdjacentHTML("beforeend",
       '<div id="object-'+id+'" data-id="'+id+'" class="gameObject" style="display:none;">' +
         '<div id="stackHeight-'+id+'" class="stackHeight" style="display:none;"></div>' +
       '</div>'
@@ -52,6 +122,14 @@ function initGame() {
   objects.forEach(function(object, i) {
     object.z = i;
   });
+
+  // replay history
+  history.forEach(function(change) {
+    handleMessage(change, false);
+  });
+
+  document.getElementById("roomCodeSpan").textContent = roomCode;
+
   checkForDoneLoading();
 }
 function getObjectDefinition(id) {
@@ -124,9 +202,8 @@ function checkForDoneLoading() {
   renderOrder();
 }
 
-function deleteEverything() {
-  mainDiv.innerHTML = "";
-  userName = null;
+function deleteTableAndEverything() {
+  tableDiv.innerHTML = "";
   gameDefinition = null;
   objectsById = null;
   selectedObjectIdToNewProps = {};
@@ -186,8 +263,8 @@ function onObjectMouseDown(event) {
 
   // begin drag
   draggingMode = DRAG_MOVE_SELECTION;
-  draggingMouseStartX = eventToMouseX(event, mainDiv);
-  draggingMouseStartY = eventToMouseY(event, mainDiv);
+  draggingMouseStartX = eventToMouseX(event, tableDiv);
+  draggingMouseStartY = eventToMouseY(event, tableDiv);
   bringSelectionToTop();
 
   render(object);
@@ -208,20 +285,20 @@ function onObjectMouseOut(event) {
   }
 }
 
-mainDiv.addEventListener("mousedown", function(event) {
+tableDiv.addEventListener("mousedown", function(event) {
   if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
   if (examiningObject != null) return;
   draggingMode = DRAG_RECTANGLE_SELECT;
-  rectangleSelectStartX = eventToMouseX(event, mainDiv);
-  rectangleSelectStartY = eventToMouseY(event, mainDiv);
+  rectangleSelectStartX = eventToMouseX(event, tableDiv);
+  rectangleSelectStartY = eventToMouseY(event, tableDiv);
   setSelectedObjects([]);
 });
 
 document.addEventListener("mousemove", function(event) {
-  var x = eventToMouseX(event, mainDiv);
-  var y = eventToMouseY(event, mainDiv);
+  var x = eventToMouseX(event, tableDiv);
+  var y = eventToMouseY(event, tableDiv);
   if (draggingMode === DRAG_RECTANGLE_SELECT) {
     rectangleSelectEndX = x;
     rectangleSelectEndY = y;
@@ -398,7 +475,7 @@ function commitSelection(selection) {
           object.faceIndex === newProps.faceIndex)) {
       var message = {
         cmd: "moveObject",
-        user: userName,
+        user: userId,
         args: {
           id: object.id,
           from: {
@@ -431,10 +508,10 @@ function commitSelection(selection) {
   } else if (messages.length > 1) {
     message = {
       cmd: "multi",
-      user: userName,
+      user: userId,
       args: messages,
     };
-  }
+  } else throw asdf;
   sendMessage(message);
   pushChangeToHistory(message);
 }
@@ -520,7 +597,7 @@ function cancelMove() {
     newProps.y = object.y;
     newProps.z = object.z;
     newProps.faceIndex = object.faceIndex;
-    render(object,true);
+    render(object, true);
   }
   draggingMode = DRAG_NONE;
   renderOrder();
@@ -604,7 +681,7 @@ function redo() {
 function reverseChange(change) {
   if (change.cmd === "multi") {
     var newArgs = change.args.map(reverseChange);
-    var newChange = {cmd:"multi", user:userName, args:newArgs};
+    var newChange = {cmd:"multi", user:userId, args:newArgs};
     return newChange;
   } else if (change.cmd === "moveObject") {
     var object = objectsById[change.args.id];
@@ -625,7 +702,7 @@ function reverseChange(change) {
     var tmp = newChange.args.from;
     newChange.args.from = newChange.args.to;
     newChange.args.to = tmp;
-    newChange.user = userName;
+    newChange.user = userId;
     return newChange;
   } else throw asdf;
 }
@@ -634,8 +711,8 @@ function pushChangeToHistory(change) {
   futureChanges = [];
 }
 
-function eventToMouseX(event, mainDiv) { return event.clientX - mainDiv.getBoundingClientRect().left; }
-function eventToMouseY(event, mainDiv) { return event.clientY - mainDiv.getBoundingClientRect().top; }
+function eventToMouseX(event, div) { return event.clientX - div.getBoundingClientRect().left; }
+function eventToMouseY(event, div) { return event.clientY - div.getBoundingClientRect().top; }
 
 function render(object, isAnimated) {
   if (object === examiningObject) return; // different handling for this
@@ -652,8 +729,8 @@ function render(object, isAnimated) {
   }
   var objectDiv = getObjectDiv(object.id);
   var facePath = object.faces[faceIndex];
-  var pixelX = mainDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
-  var pixelY = mainDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
+  var pixelX = tableDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
+  var pixelY = tableDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
   var pixelWidth = gameDefinition.coordinates.unitWidth * object.width;
   var pixelHeight = gameDefinition.coordinates.unitHeight * object.height;
   var imageUrlUrl = facePathToUrlUrl[facePath];
@@ -748,8 +825,8 @@ function renderSelectionRectangle() {
     }
     if (height <= 0) height = 1;
     if (width  <= 0) width  = 1;
-    selectionRectangleDiv.style.left = (mainDiv.offsetLeft + x) + "px";
-    selectionRectangleDiv.style.top  = (mainDiv.offsetTop  + y) + "px";
+    selectionRectangleDiv.style.left = (tableDiv.offsetLeft + x) + "px";
+    selectionRectangleDiv.style.top  = (tableDiv.offsetTop  + y) + "px";
     selectionRectangleDiv.style.width  = width  + "px";
     selectionRectangleDiv.style.height = height + "px";
     selectionRectangleDiv.style.display = "block";
@@ -777,9 +854,7 @@ function operatorCompare(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-var socket;
-var isConnected = false;
-function connectToServer() {
+function makeWebSocket() {
   var host = location.host;
   var pathname = location.pathname;
   var isHttps = location.protocol === "https:";
@@ -789,7 +864,15 @@ function connectToServer() {
   var hostName = match ? match[1] : host;
   var wsProto = isHttps ? "wss:" : "ws:";
   var wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
-  socket = new WebSocket(wsUrl);
+  return new WebSocket(wsUrl);
+}
+
+var socket;
+var isConnected = false;
+function connectToServer() {
+  setScreenMode(SCREEN_MODE_WAITING_FOR_SERVER_CONNECT);
+
+  socket = makeWebSocket();
   socket.addEventListener('open', onOpen, false);
   socket.addEventListener('message', onMessage, false);
   socket.addEventListener('error', timeoutThenCreateNew, false);
@@ -797,62 +880,107 @@ function connectToServer() {
 
   function onOpen() {
     isConnected = true;
-    connectionEstablished();
+    console.log("connected");
+    var salutationMessage;
+    if (roomCode != null) {
+      salutationMessage = {
+        cmd: "joinRoom",
+        args: {
+          roomCode: roomCode,
+        },
+      };
+      setScreenMode(SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION);
+    } else {
+      salutationMessage = {
+        cmd: "createRoom",
+      };
+      setScreenMode(SCREEN_MODE_WAITING_FOR_CREATE_ROOM);
+    }
+    sendMessage(salutationMessage);
   }
   function onMessage(event) {
     var msg = event.data;
     if (msg === "keepAlive") return;
+    if (msg == null) {
+      // TODO: why does this ever happen? (TODO: does this ever happen?)
+      console.log("WARNING: got a null message from server");
+      return;
+    }
     console.log(msg);
     var message = JSON.parse(msg);
-    handleMessage(message);
+    if (screenMode === SCREEN_MODE_WAITING_FOR_CREATE_ROOM) {
+      if (message.cmd === "createRoom") {
+        roomCode = message.args.roomCode;
+        userId = message.args.userId;
+        userName = message.args.userName;
+        initGame(message.args.game, message.args.history);
+        setScreenMode(SCREEN_MODE_PLAY);
+      } else throw asdf;
+    } else if (screenMode === SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION) {
+      if (message.cmd === "joinRoom") {
+        // success
+        userId = message.args.userId;
+        userName = message.args.userName;
+        initGame(message.args.game, message.args.history);
+        setScreenMode(SCREEN_MODE_PLAY);
+      } else if (message.cmd === "badRoomCode") {
+        // failure
+        disconnect();
+        setScreenMode(SCREEN_MODE_LOGIN);
+        // TODO: show message that says we tried
+        return;
+      } else throw asdf;
+    } else if (screenMode === SCREEN_MODE_PLAY) {
+      handleMessage(message, true);
+    } else throw asdf;
   }
   function timeoutThenCreateNew() {
-    socket.removeEventListener('error', timeoutThenCreateNew, false);
-    socket.removeEventListener('close', timeoutThenCreateNew, false);
-    socket.removeEventListener('open', onOpen, false);
+    removeListeners();
     if (isConnected) {
       isConnected = false;
-      connectionLost();
+      console.log("disconnected");
+      deleteTableAndEverything();
+      setScreenMode(SCREEN_MODE_DISCONNECTED);
     }
     setTimeout(connectToServer, 1000);
   }
+  function disconnect() {
+    console.log("disconnect");
+    removeListeners();
+    socket.close();
+    isConnected = false;
+  }
+  function removeListeners() {
+    socket.removeEventListener('open', onOpen, false);
+    socket.removeEventListener('message', onMessage, false);
+    socket.removeEventListener('error', timeoutThenCreateNew, false);
+    socket.removeEventListener('close', timeoutThenCreateNew, false);
+  }
 }
 
-function connectionEstablished() {
-  console.log("connected");
-}
-function connectionLost() {
-  console.log("disconnected");
-  deleteEverything();
-}
 function sendMessage(message) {
   socket.send(JSON.stringify(message));
 }
-function handleMessage(message) {
+function handleMessage(message, shouldRender) {
   var objectsToRender = [];
   var storeInHistory = false;
   executeMessage(message);
 
-  objectsToRender.forEach(function(object) {
-    render(object, true);
-  });
-  renderOrder();
+  if (shouldRender) {
+    objectsToRender.forEach(function(object) {
+      render(object, true);
+    });
+    renderOrder();
+  }
   if (storeInHistory) pushChangeToHistory(message);
 
   function executeMessage(message) {
     switch (message.cmd) {
-      case "login":
-        userName = message.args;
-        break;
-      case "game":
-        gameDefinition = message.args;
-        initGame();
-        break;
       case "multi":
         message.args.forEach(executeMessage);
         break;
       case "moveObject":
-        if (message.user === userName) return;
+        if (message.user === userId) return;
         storeInHistory = true;
         var object = objectsById[message.args.id];
         object.x = message.args.to.x;
@@ -882,5 +1010,8 @@ function getObjectDiv(id) {
 function getStackHeightDiv(id) {
   return document.getElementById("stackHeight-" + id);
 }
+function setDivVisible(div, visible) {
+  div.style.display = visible ? "block" : "none";
+}
 
-connectToServer();
+setScreenMode(SCREEN_MODE_LOGIN);
