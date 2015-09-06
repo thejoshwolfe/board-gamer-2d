@@ -2,6 +2,10 @@
 
 2d multiplayer html5 board game simulator.
 
+## Demo
+
+http://board-gamer-2d.wolfesoftware.com/
+
 ## Status
 
 Working:
