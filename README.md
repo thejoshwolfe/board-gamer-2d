@@ -20,7 +20,6 @@ Working:
 Planned:
 
  * Multiplayer gameplay:
-   * Usernames and a list of who's in the room.
    * A "hand" of cards that you can see and others can't.
    * A command to spread a stack of cards to look at all the cards side-by-side.
    * Spawn textboxes on the table that everyone can see and edit.
