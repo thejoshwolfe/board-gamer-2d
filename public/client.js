@@ -717,15 +717,12 @@ function renderUserList() {
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
     return (
-      '<li'+(userId === myUser.id ? ' class="myUserName"' : '')+'>' +
+      '<li'+(userId === myUser.id ? ' id="myUserNameLi"' : '')+' title="Click to edit your name">' +
         sanitizeHtml(usersById[userId].userName) +
-        (userId === myUser.id ?
-          '<input type="button" id="editMyNameButton" class="smallTextButton" value="E" title="Edit my name">'
-        : '') +
       '</li>');
   }).join("");
 
-  document.getElementById("editMyNameButton").addEventListener("click", function() {
+  document.getElementById("myUserNameLi").addEventListener("click", function() {
     var newName = prompt("New name (max length 16 characters):");
     if (!newName) return;
     sendMessage({
