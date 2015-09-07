@@ -45,13 +45,21 @@
         left: 50%; top: 50%;
         transform: translate(-50%, -50%);
       }
-      input[type="button"] {
+      .largeTextButon {
         font-size: 15pt;
+      }
+      .smallTextButton {
+        font-size: 10pt;
+        font-family: monospace;
       }
       ul {
         margin: 0px;
         padding: 0px;
         list-style-type: none;
+      }
+      .myUserName {
+        background-color: yellow;
+        font-weight: bold;
       }
     </style>
   </head>
@@ -74,11 +82,11 @@
       </div>
     </div>
     <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt;">
-      <p><input id="createRoomButton" type="button" value="Create a Room"></p>
+      <p><input id="createRoomButton" type="button" class="largeTextButon" value="Create a Room"></p>
       <p>
         Join a Room:
         <input id="roomCodeTextbox" placeholder="Room Code" class="roomCode" maxlength=5 style="width: 7em;">
-        <input id="joinRoomButton" type="button" value="Join">
+        <input id="joinRoomButton" type="button" class="largeTextButon" value="Join">
       </p>
     </div>
     <div id="loadingDiv">

@@ -716,8 +716,27 @@ function renderUserList() {
   var userIds = Object.keys(usersById);
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
-    return "<li>" + sanitizeHtml(usersById[userId].userName) + "</li>";
+    return (
+      '<li'+(userId === myUser.id ? ' class="myUserName"' : '')+'>' +
+        sanitizeHtml(usersById[userId].userName) +
+        (userId === myUser.id ?
+          '<input type="button" id="editMyNameButton" class="smallTextButton" value="E" title="Edit my name">'
+        : '') +
+      '</li>');
   }).join("");
+
+  document.getElementById("editMyNameButton").addEventListener("click", function() {
+    var newName = prompt("New name (max length 16 characters):");
+    if (!newName) return;
+    sendMessage({
+      cmd: "changeMyName",
+      args: newName,
+    });
+    if (newName.length > 16) newName = newName.substring(0, 16);
+    // anticipate
+    myUser.userName = newName;
+    renderUserList();
+  });
 }
 
 function render(object, isAnimated) {
@@ -949,6 +968,9 @@ function connectToServer() {
           renderUserList();
         } else if (message.cmd === "makeAMove") {
           makeAMove(message.args, true);
+        } else if (message.cmd === "changeMyName") {
+          usersById[message.args.id].userName = message.args.userName;
+          renderUserList();
         }
         break;
       default: throw asdf;
