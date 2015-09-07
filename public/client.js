@@ -125,8 +125,8 @@ function initGame(game, history) {
   });
 
   // replay history
-  history.forEach(function(change) {
-    handleMessage(change, false);
+  history.forEach(function(move) {
+    makeAMove(move, false);
   });
 
   document.getElementById("roomCodeSpan").textContent = roomCode;
@@ -467,7 +467,8 @@ function renderAndMaybeCommitSelection(selection) {
   renderOrder();
 }
 function commitSelection(selection) {
-  var messages = [];
+  var move = [];
+  move.push(myUser.id);
   for (var id in selection) {
     var object = objectsById[id];
     var newProps = selection[id];
@@ -475,26 +476,16 @@ function commitSelection(selection) {
           object.y === newProps.y &&
           object.z === newProps.z &&
           object.faceIndex === newProps.faceIndex)) {
-      var message = {
-        cmd: "moveObject",
-        user: myUser.id,
-        args: {
-          id: object.id,
-          from: {
-            x: object.x,
-            y: object.y,
-            z: object.z,
-            faceIndex: object.faceIndex,
-          },
-          to: {
-            x: newProps.x,
-            y: newProps.y,
-            z: newProps.z,
-            faceIndex: newProps.faceIndex,
-          },
-        },
-      };
-      messages.push(message);
+      move.push(
+        object.id,
+        object.x,
+        object.y,
+        object.z,
+        object.faceIndex,
+        newProps.x,
+        newProps.y,
+        newProps.z,
+        newProps.faceIndex);
       // anticipate
       object.x = newProps.x;
       object.y = newProps.y;
@@ -502,20 +493,13 @@ function commitSelection(selection) {
       object.faceIndex = newProps.faceIndex;
     }
   }
-  var message;
-  if (messages.length === 0) {
-    return;
-  } else if (messages.length === 1) {
-    message = messages[0];
-  } else if (messages.length > 1) {
-    message = {
-      cmd: "multi",
-      user: myUser.id,
-      args: messages,
-    };
-  } else throw asdf;
+  if (move.length <= 1) return;
+  var message = {
+    cmd: "makeAMove",
+    args: move,
+  };
   sendMessage(message);
-  pushChangeToHistory(message);
+  pushChangeToHistory(move);
 }
 
 var SHIFT = 1;
@@ -668,45 +652,56 @@ function unexamine() {
 
 function undo() {
   if (changeHistory.length === 0) return;
-  var newMessage = reverseChange(changeHistory.pop());
-  renderOrder();
-  sendMessage(newMessage);
-  futureChanges.push(newMessage);
+  var newMove = reverseChange(changeHistory.pop());
+  sendMessage({cmd:"makeAMove", args:newMove});
+  futureChanges.push(newMove);
 }
 function redo() {
   if (futureChanges.length === 0) return;
-  var newMessage = reverseChange(futureChanges.pop());
-  renderOrder();
-  sendMessage(newMessage);
-  changeHistory.push(newMessage);
+  var newMove = reverseChange(futureChanges.pop());
+  sendMessage({cmd:"makeAMove", args:newMove});
+  changeHistory.push(newMove);
 }
-function reverseChange(change) {
-  if (change.cmd === "multi") {
-    var newArgs = change.args.map(reverseChange);
-    var newChange = {cmd:"multi", user:myUser.id, args:newArgs};
-    return newChange;
-  } else if (change.cmd === "moveObject") {
-    var object = objectsById[change.args.id];
-    object.x = change.args.from.x;
-    object.y = change.args.from.y;
-    object.z = change.args.from.z;
-    object.faceIndex = change.args.from.faceIndex;
+function reverseChange(move) {
+  var newMove = [myUser.id];
+  var i = 0;
+  move[i++]; // userId
+  while (i < move.length) {
+    var object = objectsById[move[i++]];
+    var fromX         =      move[i++];
+    var fromY         =      move[i++];
+    var fromZ         =      move[i++];
+    var fromFaceIndex =      move[i++];
+    var   toX         =      move[i++];
+    var   toY         =      move[i++];
+    var   toZ         =      move[i++];
+    var   toFaceIndex =      move[i++];
+    object.x         = fromX;
+    object.y         = fromY;
+    object.z         = fromZ;
+    object.faceIndex = fromFaceIndex;
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps != null) {
-      newProps.x = change.args.from.x;
-      newProps.y = change.args.from.y;
-      newProps.z = change.args.from.z;
-      newProps.faceIndex = change.args.from.faceIndex;
+      newProps.x         = object.x;
+      newProps.y         = object.y;
+      newProps.z         = object.z;
+      newProps.faceIndex = object.faceIndex;
     }
+    newMove.push(
+      object.id,
+      toX,
+      toY,
+      toZ,
+      toFaceIndex,
+      fromX,
+      fromY,
+      fromZ,
+      fromFaceIndex);
     render(object, true);
+  }
+  renderOrder();
 
-    var newChange = JSON.parse(JSON.stringify(change));
-    var tmp = newChange.args.from;
-    newChange.args.from = newChange.args.to;
-    newChange.args.to = tmp;
-    newChange.user = myUser.id;
-    return newChange;
-  } else throw asdf;
+  return newMove;
 }
 function pushChangeToHistory(change) {
   changeHistory.push(change);
@@ -720,7 +715,6 @@ function renderUserList() {
   var userListUl = document.getElementById("userListUl");
   var userIds = Object.keys(usersById);
   userIds.sort();
-  console.log(userIds);
   userListUl.innerHTML = userIds.map(function(userId) {
     return "<li>" + sanitizeHtml(usersById[userId].userName) + "</li>";
   }).join("");
@@ -953,8 +947,8 @@ function connectToServer() {
         } else if (message.cmd === "userLeft") {
           delete usersById[message.args.id];
           renderUserList();
-        } else {
-          handleMessage(message, true);
+        } else if (message.cmd === "makeAMove") {
+          makeAMove(message.args, true);
         }
         break;
       default: throw asdf;
@@ -987,10 +981,27 @@ function connectToServer() {
 function sendMessage(message) {
   socket.send(JSON.stringify(message));
 }
-function handleMessage(message, shouldRender) {
-  var objectsToRender = [];
-  var storeInHistory = false;
-  executeMessage(message);
+function makeAMove(move, shouldRender) {
+  var objectsToRender = shouldRender ? [] : null;
+  var i = 0;
+  var userId = move[i++];
+  if (userId === myUser.id) return;
+  while (i < move.length) {
+    var object = objectsById[move[i++]];
+    var fromX         =      move[i++];
+    var fromY         =      move[i++];
+    var fromZ         =      move[i++];
+    var fromFaceIndex =      move[i++];
+    var   toX         =      move[i++];
+    var   toY         =      move[i++];
+    var   toZ         =      move[i++];
+    var   toFaceIndex =      move[i++];
+    object.x = toX;
+    object.y = toY;
+    object.z = toZ;
+    object.faceIndex = toFaceIndex;
+    if (shouldRender) objectsToRender.push(object);
+  }
 
   if (shouldRender) {
     objectsToRender.forEach(function(object) {
@@ -998,27 +1009,7 @@ function handleMessage(message, shouldRender) {
     });
     renderOrder();
   }
-  if (storeInHistory) pushChangeToHistory(message);
-
-  function executeMessage(message) {
-    switch (message.cmd) {
-      case "multi":
-        message.args.forEach(executeMessage);
-        break;
-      case "moveObject":
-        if (message.user === myUser.id) return;
-        storeInHistory = true;
-        var object = objectsById[message.args.id];
-        object.x = message.args.to.x;
-        object.y = message.args.to.y;
-        object.z = message.args.to.z;
-        object.faceIndex = message.args.to.faceIndex;
-        objectsToRender.push(object);
-        break;
-      default:
-        console.log("unknown command:", message.cmd);
-    }
-  }
+  pushChangeToHistory(move);
 }
 
 function generateRandomId() {
