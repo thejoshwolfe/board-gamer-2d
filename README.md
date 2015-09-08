@@ -20,8 +20,8 @@ Working:
 Planned:
 
  * Multiplayer gameplay:
-   * A "hand" of cards that you can see and others can't.
    * A command to spread a stack of cards to look at all the cards side-by-side.
+   * A "hand" of cards that you can see and others can't.
    * Spawn textboxes on the table that everyone can see and edit.
    * Number counters for keeping track of score. Basic calculator functions, like add and subtract.
    * A "turn order" widget that accepts a hotkey for "my turn is done", and plays a sound for the next player.

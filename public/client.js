@@ -939,18 +939,18 @@ function connectToServer() {
       case SCREEN_MODE_WAITING_FOR_CREATE_ROOM:
       case SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION:
         if (message.cmd === "joinRoom") {
+          setScreenMode(SCREEN_MODE_PLAY);
           roomCode = message.args.roomCode;
           myUser = {
             id: message.args.userId,
             userName: message.args.userName,
           };
           usersById[myUser.id] = myUser;
-          initGame(message.args.game, message.args.history);
           message.args.users.forEach(function(otherUser) {
             usersById[otherUser.id] = otherUser;
           });
+          initGame(message.args.game, message.args.history);
           renderUserList();
-          setScreenMode(SCREEN_MODE_PLAY);
         } else throw asdf;
         break;
       case SCREEN_MODE_PLAY:
