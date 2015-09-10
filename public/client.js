@@ -789,8 +789,8 @@ function renderExaminingObject() {
     bigHeight = windowHeight;
   }
   objectDiv.classList.add("animatedMovement");
-  objectDiv.style.left = (windowWidth  - bigWidth)  / 2;
-  objectDiv.style.top  = (windowHeight - bigHeight) / 2;
+  objectDiv.style.left = (windowWidth  - bigWidth)  / 2 + window.scrollX;
+  objectDiv.style.top  = (windowHeight - bigHeight) / 2 + window.scrollY;
   objectDiv.style.width  = bigWidth;
   objectDiv.style.height = bigHeight;
   objectDiv.style.zIndex = findMaxZ() + 1;
