@@ -921,11 +921,6 @@ function connectToServer() {
   function onMessage(event) {
     var msg = event.data;
     if (msg === "keepAlive") return;
-    if (msg == null) {
-      // TODO: why does this ever happen? (TODO: does this ever happen?)
-      console.log("WARNING: got a null message from server");
-      return;
-    }
     console.log(msg);
     var message = JSON.parse(msg);
     if (screenMode === SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
@@ -954,7 +949,9 @@ function connectToServer() {
         } else throw asdf;
         break;
       case SCREEN_MODE_PLAY:
-        if (message.cmd === "userJoined") {
+        if (message.cmd === "makeAMove") {
+          makeAMove(message.args, true);
+        } else if (message.cmd === "userJoined") {
           usersById[message.args.id] = {
             id: message.args.id,
             userName: message.args.userName,
@@ -963,8 +960,6 @@ function connectToServer() {
         } else if (message.cmd === "userLeft") {
           delete usersById[message.args.id];
           renderUserList();
-        } else if (message.cmd === "makeAMove") {
-          makeAMove(message.args, true);
         } else if (message.cmd === "changeMyName") {
           usersById[message.args.id].userName = message.args.userName;
           renderUserList();
@@ -1019,6 +1014,13 @@ function makeAMove(move, shouldRender) {
     object.y = toY;
     object.z = toZ;
     object.faceIndex = toFaceIndex;
+    var newProps = selectedObjectIdToNewProps[object.id];
+    if (newProps != null) {
+      newProps.x = toX;
+      newProps.y = toY;
+      newProps.z = toZ;
+      newProps.faceIndex = toFaceIndex;
+    }
     if (shouldRender) objectsToRender.push(object);
   }
 
