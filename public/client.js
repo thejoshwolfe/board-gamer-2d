@@ -658,10 +658,10 @@ function examineMulti() {
     selection = {};
     getObjects().forEach(function(object) {
       if (object.locked) return; // don't look at me
-      if (object.x >= hoverX + hoverWidth)  return;
-      if (object.y >= hoverY + hoverHeight) return;
-      if (object.x + object.width  < hoverX) return;
-      if (object.y + object.height < hoverY) return;
+      if (object.x >= hoverX   + hoverWidth)    return;
+      if (object.y >= hoverY   + hoverHeight)   return;
+      if (hoverX   >= object.x + object.width)  return;
+      if (hoverY   >= object.y + object.height) return;
       selection[object.id] = newPropsForObject(object);
     });
   } else {
