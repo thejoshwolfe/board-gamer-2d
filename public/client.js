@@ -245,13 +245,18 @@ var rectangleSelectEndX;
 var rectangleSelectEndY;
 var selectedObjectIdToNewProps = {};
 
-var examiningObject = null;
+var EXAMINE_NONE = 0;
+var EXAMINE_SINGLE = 1;
+var EXAMINE_MULTI = 2;
+var examiningMode = EXAMINE_NONE;
+var examiningObjectsById = {};
+
 var hoverObject;
 var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
-  if (examiningObject != null) return;
+  if (examiningMode != EXAMINE_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return; // click thee behind me, satan
@@ -291,7 +296,7 @@ tableDiv.addEventListener("mousedown", function(event) {
   if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
-  if (examiningObject != null) return;
+  if (examiningMode != EXAMINE_NONE) return;
   draggingMode = DRAG_RECTANGLE_SELECT;
   rectangleSelectStartX = eventToMouseX(event, tableDiv);
   rectangleSelectStartY = eventToMouseY(event, tableDiv);
@@ -394,7 +399,6 @@ document.addEventListener("mouseup", function(event) {
 
 function setHoverObject(object) {
   if (hoverObject == object) return;
-  if (examiningObject != null) return;
   if (hoverObject != null) {
     getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
   }
@@ -531,7 +535,8 @@ document.addEventListener("keydown", function(event) {
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
       if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
-      if (modifierMask === 0) { examine(); break; }
+      if (modifierMask === 0)     { examineSingle(); break; }
+      if (modifierMask === SHIFT) { examineMulti(); break; }
       return;
     case "Y".charCodeAt(0):
       if (modifierMask === CTRL) { redo(); break; }
@@ -625,28 +630,56 @@ function shuffleSelection() {
   renderAndMaybeCommitSelection(selection);
   renderOrder();
 }
-function examine() {
-  if (examiningObject != null) return; // ignore key repeat
-  if (hoverObject != null) {
-    examiningObject = hoverObject;
-  } else if (draggingMode === DRAG_MOVE_SELECTION) {
-    var loneObject = null;
-    for (var id in selectedObjectIdToNewProps) {
-      if (loneObject != null) return; // too many objects selected
-      loneObject = objectsById[id];
-    }
-    if (loneObject == null) throw asdf; // always dragging a selection
-      examiningObject = loneObject;
+function examineSingle() {
+  if (examiningMode === EXAMINE_SINGLE) return; // ignore key repeat
+  unexamine();
+  examiningMode = EXAMINE_SINGLE;
+  examiningObjectsById = {};
+  if (hoverObject == null) return;
+  // ignore the newProps in selectedObjectIdToNewProps, because it doesn't really matter
+  examiningObjectsById[hoverObject.id] = newPropsForObject(hoverObject);
+  renderExaminingObjects();
+}
+function examineMulti() {
+  if (examiningMode === EXAMINE_MULTI) return;
+  unexamine();
+  examiningMode = EXAMINE_MULTI;
+
+  var selection;
+  if (Object.keys(selectedObjectIdToNewProps).length > 0) {
+    // real selection
+    selection = selectedObjectIdToNewProps;
+  } else if (hoverObject != null) {
+    // choose all objects overlapping the hover object
+    var hoverX = hoverObject.x;
+    var hoverY = hoverObject.y;
+    var hoverWidth  = hoverObject.width;
+    var hoverHeight = hoverObject.height;
+    selection = {};
+    getObjects().forEach(function(object) {
+      if (object.locked) return; // don't look at me
+      if (object.x >= hoverX + hoverWidth)  return;
+      if (object.y >= hoverY + hoverHeight) return;
+      if (object.x + object.width  < hoverX) return;
+      if (object.y + object.height < hoverY) return;
+      selection[object.id] = newPropsForObject(object);
+    });
   } else {
+    // no selection
     return;
   }
-  renderExaminingObject();
+
+  examiningObjectsById = selection;
+  renderExaminingObjects();
 }
 function unexamine() {
-  if (examiningObject == null) return;
-  var object = examiningObject;
-  examiningObject = null;
-  render(object, true);
+  if (examiningMode === EXAMINE_NONE) return;
+  examiningMode = EXAMINE_NONE;
+  var selection = examiningObjectsById;
+  examiningObjectsById = {};
+  for (var id in selection) {
+    render(objectsById[id], true);
+  }
   renderOrder();
 }
 
@@ -737,7 +770,7 @@ function renderUserList() {
 }
 
 function render(object, isAnimated) {
-  if (object === examiningObject) return; // different handling for this
+  if (object.id in examiningObjectsById) return; // different handling for this
   var x = object.x;
   var y = object.y;
   var z = object.z;
@@ -772,30 +805,60 @@ function render(object, isAnimated) {
   }
   objectDiv.style.display = "block";
 }
-function renderExaminingObject() {
-  var object = examiningObject;
+function renderExaminingObjects() {
+  // sort by z order. bottom-to-top is left-to-right.
+  var objects = [];
+  for (var id in examiningObjectsById) {
+    objects.push(objectsById[id]);
+  }
+  objects.sort(function(a, b) {
+    return compareZ(examiningObjectsById[a.id], examiningObjectsById[b.id]);
+  });
+
+  // how far in can we zoom?
+  var totalWidth = 0;
+  var maxHeight = 0;
+  objects.forEach(function(object) {
+    totalWidth += object.width;
+    if (object.height > maxHeight) maxHeight = object.height;
+  });
+
   var windowWidth  = window.innerWidth;
   var windowHeight = window.innerHeight;
   var windowAspectRatio = windowWidth / windowHeight;
-  var objectDiv = getObjectDiv(object.id);
-  var objectAspectRatio = object.width / object.height;
-  var bigWidth;
+  var objectsAspectRatio = totalWidth / maxHeight;
+
   var bigHeight;
-  if (windowAspectRatio < objectAspectRatio) {
-    bigWidth  = windowWidth;
-    bigHeight = windowWidth  / objectAspectRatio;
+  if (windowAspectRatio < objectsAspectRatio) {
+    bigHeight = windowWidth  / objectsAspectRatio;
   } else {
-    bigWidth  = windowHeight * objectAspectRatio;
     bigHeight = windowHeight;
   }
-  objectDiv.classList.add("animatedMovement");
-  objectDiv.style.left = (windowWidth  - bigWidth)  / 2 + window.scrollX;
-  objectDiv.style.top  = (windowHeight - bigHeight) / 2 + window.scrollY;
-  objectDiv.style.width  = bigWidth;
-  objectDiv.style.height = bigHeight;
-  objectDiv.style.zIndex = findMaxZ() + 1;
-  var stackHeightDiv = getStackHeightDiv(object.id);
-  stackHeightDiv.style.display = "none";
+  var zoomFactor = bigHeight / maxHeight;
+  if (zoomFactor < gameDefinition.coordinates.unitWidth) {
+    // don't ever zoom out with this function. prefer overlapping objects.
+    zoomFactor = gameDefinition.coordinates.unitWidth;
+    totalWidth = windowWidth / gameDefinition.coordinates.unitWidth;
+  }
+  var averageWidth = totalWidth / objects.length;
+
+  var maxZ = findMaxZ();
+  for (var i = 0; i < objects.length; i++) {
+    var object = objects[i];
+    var renderWidth  = object.width  * zoomFactor;
+    var renderHeight = object.height * zoomFactor;
+    var renderX = averageWidth * i * zoomFactor;
+    var renderY = (windowHeight - renderHeight) / 2;
+    var objectDiv = getObjectDiv(object.id);
+    objectDiv.classList.add("animatedMovement");
+    objectDiv.style.left = renderX + window.scrollX;
+    objectDiv.style.top  = renderY + window.scrollY;
+    objectDiv.style.width  = renderWidth;
+    objectDiv.style.height = renderHeight;
+    objectDiv.style.zIndex = maxZ + i;
+    var stackHeightDiv = getStackHeightDiv(object.id);
+    stackHeightDiv.style.display = "none";
+  }
 }
 function renderOrder() {
   var sizeAndLocationToIdAndZList = {};
@@ -811,7 +874,7 @@ function renderOrder() {
     var idAndZList = sizeAndLocationToIdAndZList[key];
     idAndZList.sort(compareZ);
     idAndZList.forEach(function(idAndZ, i) {
-      if (examiningObject != null && examiningObject.id === idAndZ.id) return;
+      if (idAndZ.id in examiningObjectsById) return;
       var stackHeightDiv = getStackHeightDiv(idAndZ.id);
       if (i > 0) {
         stackHeightDiv.textContent = (i + 1).toString();
