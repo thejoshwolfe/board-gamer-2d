@@ -544,6 +544,9 @@ document.addEventListener("keydown", function(event) {
     case "Y".charCodeAt(0):
       if (modifierMask === CTRL) { redo(); break; }
       return;
+    case 191: // slash/question mark?
+      if (modifierMask === SHIFT) { toggleHelp(); break; }
+      return;
     default: return;
   }
   event.preventDefault();
@@ -720,6 +723,15 @@ function unexamine() {
     render(objectsById[id], true);
   }
   renderOrder();
+}
+var isHelpShown = true;
+function toggleHelp() {
+  isHelpShown = !isHelpShown;
+  if (isHelpShown) {
+    document.getElementById("helpContentsDiv").style.display = "block";
+  } else {
+    document.getElementById("helpContentsDiv").style.display = "none";
+  }
 }
 
 function undo() {
