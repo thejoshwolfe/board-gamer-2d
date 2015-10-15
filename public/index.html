@@ -35,10 +35,13 @@
         background-color: rgba(224,224,224,0.5);
         font-size: 10pt; font-family: monospace;
       }
+      #helpDiv.helpExpanded {
+        background-color: rgba(204,204,255,0.9);
+      }
       #helpDiv p {
         margin: 0px;
       }
-      #helpDiv:hover #helpContentsDiv {
+      #helpDiv.helpExpanded #helpContentsDiv {
         display: block !important;
       }
       #numberBufferDiv {
@@ -101,9 +104,9 @@
     <div id="roomDiv" style="display:none;">
       <div id="tableDiv"></div>
       <div id="selectionRectangleDiv" style="position:absolute; display:none; border:4px dotted #aaa; pointer-events: none;"></div>
-      <div id="helpDiv">
+      <div id="helpDiv" class="helpExpanded">
         <p style="font-size: 1.3em;">Help</p>
-        <p id="helpContentsDiv" style="margin-top: 1em;">
+        <p id="helpContentsDiv" style="margin-top: 1em; display: none;">
           Controls:<br>
           ?: Show/hide this help.<br>
           F: Flip object over or turn to next side.<br>

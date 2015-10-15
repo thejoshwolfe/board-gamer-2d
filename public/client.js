@@ -123,6 +123,7 @@ function initGame(game, history) {
   objects.forEach(function(object, i) {
     object.z = i;
   });
+  fixFloatingThingZ();
 
   // replay history
   history.forEach(function(move) {
@@ -217,9 +218,18 @@ function findMaxZ(excludingSelection) {
   var z = null;
   getObjects().forEach(function(object) {
     if (excludingSelection != null && object.id in excludingSelection) return;
-    if (z == null || object.z > z) z = object.z;
+    var newProps = selectedObjectIdToNewProps[object.id];
+    if (newProps == null) newProps = object;
+    if (z == null || object.z > z) z = newProps.z;
   });
   return z;
+}
+function fixFloatingThingZ() {
+  renderExaminingObjects();
+  var maxZ = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
+  console.log("fix it:", maxZ);
+  document.getElementById("roomInfoDiv").style.zIndex = maxZ + 1;
+  document.getElementById("helpDiv").style.zIndex = maxZ + 2;
 }
 
 var DRAG_NONE = 0;
@@ -288,6 +298,7 @@ function onObjectMouseDown(event) {
     newProps.z = z + i + 1;
   });
   renderAndMaybeCommitSelection(selection);
+  fixFloatingThingZ();
 }
 function onObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
@@ -772,12 +783,25 @@ function clearNumberBuffer() {
 }
 
 var isHelpShown = true;
+var isHelpMouseIn = false;
 function toggleHelp() {
   isHelpShown = !isHelpShown;
-  if (isHelpShown) {
-    document.getElementById("helpContentsDiv").style.display = "block";
+  renderHelp();
+}
+document.getElementById("helpDiv").addEventListener("mousemove", function() {
+  if (draggingMode !== DRAG_NONE) return;
+  isHelpMouseIn = true;
+  renderHelp();
+});
+document.getElementById("helpDiv").addEventListener("mouseout", function() {
+  isHelpMouseIn = false;
+  renderHelp();
+});
+function renderHelp() {
+  if (isHelpShown || isHelpMouseIn) {
+    document.getElementById("helpDiv").classList.add("helpExpanded");
   } else {
-    document.getElementById("helpContentsDiv").style.display = "none";
+    document.getElementById("helpDiv").classList.remove("helpExpanded");
   }
 }
 
@@ -956,7 +980,7 @@ function renderExaminingObjects() {
     objectDiv.style.top  = renderY + window.scrollY;
     objectDiv.style.width  = renderWidth;
     objectDiv.style.height = renderHeight;
-    objectDiv.style.zIndex = maxZ + i;
+    objectDiv.style.zIndex = maxZ + i + 3;
     var stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.style.display = "none";
   }
