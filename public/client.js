@@ -201,6 +201,7 @@ function checkForDoneLoading() {
   // all done loading
   getObjects().forEach(render);
   renderOrder();
+  resizeTableToFitEverything();
 }
 
 function deleteTableAndEverything() {
@@ -276,6 +277,7 @@ function onObjectMouseDown(event) {
 
   render(object);
   renderOrder();
+  resizeTableToFitEverything();
 }
 function onObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
@@ -385,6 +387,7 @@ document.addEventListener("mousemove", function(event) {
       }
     });
     renderOrder();
+    resizeTableToFitEverything();
   }
 });
 document.addEventListener("mouseup", function(event) {
@@ -394,6 +397,7 @@ document.addEventListener("mouseup", function(event) {
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
     commitSelection(selectedObjectIdToNewProps);
+    resizeTableToFitEverything();
   }
 });
 
@@ -469,6 +473,7 @@ function renderAndMaybeCommitSelection(selection) {
   // now that we've possibly committed a temporary selection, we can render.
   objectsToRender.forEach(render);
   renderOrder();
+  resizeTableToFitEverything();
 }
 function commitSelection(selection) {
   var move = [];
@@ -598,6 +603,7 @@ function cancelMove() {
   }
   draggingMode = DRAG_NONE;
   renderOrder();
+  resizeTableToFitEverything();
 }
 function shuffleSelection() {
   var selection;
@@ -635,6 +641,7 @@ function shuffleSelection() {
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
+  resizeTableToFitEverything();
 }
 function groupSelection() {
   var selection = getEffectiveSelection();
@@ -671,6 +678,7 @@ function groupSelection() {
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
+  resizeTableToFitEverything();
 }
 function examineSingle() {
   if (examiningMode === EXAMINE_SINGLE) return; // ignore key repeat
@@ -784,6 +792,7 @@ function reverseChange(move) {
     render(object, true);
   }
   renderOrder();
+  resizeTableToFitEverything();
 
   return newMove;
 }
@@ -835,26 +844,31 @@ function render(object, isAnimated) {
   }
   var objectDiv = getObjectDiv(object.id);
   var facePath = object.faces[faceIndex];
-  var pixelX = tableDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x;
-  var pixelY = tableDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y;
-  var pixelWidth = gameDefinition.coordinates.unitWidth * object.width;
-  var pixelHeight = gameDefinition.coordinates.unitHeight * object.height;
+  var pixelRect = getPixelRect(x, y, object.width, object.height);
   var imageUrlUrl = facePathToUrlUrl[facePath];
   if (isAnimated) {
     objectDiv.classList.add("animatedMovement");
   } else {
     objectDiv.classList.remove("animatedMovement");
   }
-  objectDiv.style.left = pixelX + "px";
-  objectDiv.style.top  = pixelY + "px";
-  objectDiv.style.width  = pixelWidth;
-  objectDiv.style.height = pixelHeight;
+  objectDiv.style.left = pixelRect.x + "px";
+  objectDiv.style.top  = pixelRect.y + "px";
+  objectDiv.style.width  = pixelRect.width;
+  objectDiv.style.height = pixelRect.height;
   objectDiv.style.zIndex = z;
   if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
     objectDiv.dataset.facePath = facePath;
     objectDiv.style.backgroundImage = imageUrlUrl;
   }
   objectDiv.style.display = "block";
+}
+function getPixelRect(x, y, width, height) {
+  return {
+    x: tableDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x,
+    y: tableDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y,
+    width:  gameDefinition.coordinates.unitWidth  * width,
+    height: gameDefinition.coordinates.unitHeight * height,
+  };
 }
 function renderExaminingObjects() {
   // sort by z order. bottom-to-top is left-to-right.
@@ -969,6 +983,24 @@ function renderSelectionRectangle() {
   } else {
     selectionRectangleDiv.style.display = "none";
   }
+}
+function resizeTableToFitEverything() {
+  // don't shrink the scrollable area while we're holding the thing that causes it to shrink
+  if (draggingMode === DRAG_MOVE_SELECTION) return;
+  // at least this minimum size
+  var maxX = 800;
+  var maxY = 800;
+  var padding = 8;
+  for (var id in objectsById) {
+    var object = objectsById[id];
+    var pixelRect = getPixelRect(object.x, object.y, object.width, object.height);
+    var x = pixelRect.x + pixelRect.width  + padding;
+    var y = pixelRect.y + pixelRect.height + padding;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  tableDiv.style.width  = maxX + "px";
+  tableDiv.style.height = maxY + "px";
 }
 
 function getObjects() {
@@ -1143,6 +1175,7 @@ function makeAMove(move, shouldRender) {
       render(object, true);
     });
     renderOrder();
+    resizeTableToFitEverything();
   }
   pushChangeToHistory(move);
 }
