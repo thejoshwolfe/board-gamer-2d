@@ -210,6 +210,7 @@ function deleteTableAndEverything() {
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
+  consumeNumberModifier();
   // leave the image cache alone
 }
 function bringSelectionToTop() {
@@ -266,7 +267,21 @@ function onObjectMouseDown(event) {
 
   // select
   if (selectedObjectIdToNewProps[object.id] == null) {
-    setSelectedObjects([object]);
+    // make a selection
+    var numberModifier = consumeNumberModifier();
+    if (numberModifier == null) numberModifier = 1;
+    if (numberModifier === 1) {
+      setSelectedObjects([object]);
+    } else {
+      var stackId = getStackId(object, object);
+      var stackOfObjects = getObjects().filter(function(object) { return getStackId(object, object) === stackId; });
+      stackOfObjects.sort(compareZ);
+      // we can be pretty sure the object we're clicking is the top.
+      if (numberModifier < stackOfObjects.length) {
+        stackOfObjects.splice(0, stackOfObjects.length - numberModifier);
+      }
+      setSelectedObjects(stackOfObjects);
+    }
   }
 
   // begin drag
@@ -537,8 +552,9 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0) { groupSelection(); break; }
       return;
     case 27: // Escape
-      if (draggingMode === DRAG_MOVE_SELECTION && modifierMask === 0) { cancelMove(); break; }
-      if (draggingMode === DRAG_NONE && modifierMask === 0) { setSelectedObjects([]); break; }
+      if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
+      if (modifierMask === 0 && draggingMode === DRAG_MOVE_SELECTION) { cancelMove(); break; }
+      if (modifierMask === 0 && draggingMode === DRAG_NONE)           { setSelectedObjects([]); break; }
       return;
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
@@ -552,6 +568,13 @@ document.addEventListener("keydown", function(event) {
     case 191: // slash/question mark?
       if (modifierMask === SHIFT) { toggleHelp(); break; }
       return;
+
+    case 48: case 49: case 50: case 51: case 52:  case 53:  case 54:  case 55:  case 56:  case 57:  // number keys
+    case 96: case 97: case 98: case 99: case 100: case 101: case 102: case 103: case 104: case 105: // numpad
+      var numberValue = event.keyCode < 96 ? event.keyCode - 48 : event.keyCode - 96;
+      if (modifierMask === 0) { typeNumber(numberValue); break; }
+      return;
+
     default: return;
   }
   event.preventDefault();
@@ -732,6 +755,24 @@ function unexamine() {
   }
   renderOrder();
 }
+
+var numberTypingBuffer = "";
+function typeNumber(numberValue) {
+  numberTypingBuffer += numberValue;
+  renderNumberBuffer();
+}
+function consumeNumberModifier() {
+  if (numberTypingBuffer.length === 0) return null;
+  var result = parseInt(numberTypingBuffer, 10);
+  numberTypingBuffer = "";
+  renderNumberBuffer();
+  return result;
+}
+function clearNumberBuffer() {
+  numberTypingBuffer = "";
+  renderNumberBuffer();
+}
+
 var isHelpShown = true;
 function toggleHelp() {
   isHelpShown = !isHelpShown;
@@ -982,6 +1023,15 @@ function renderSelectionRectangle() {
     selectionRectangleDiv.style.display = "block";
   } else {
     selectionRectangleDiv.style.display = "none";
+  }
+}
+function renderNumberBuffer() {
+  var numberBufferDiv = document.getElementById("numberBufferDiv");
+  if (numberTypingBuffer.length !== 0) {
+    numberBufferDiv.textContent = numberTypingBuffer;
+    numberBufferDiv.style.display = "block";
+  } else {
+    numberBufferDiv.style.display = "none";
   }
 }
 function resizeTableToFitEverything() {
