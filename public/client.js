@@ -528,6 +528,9 @@ document.addEventListener("keydown", function(event) {
     case "F".charCodeAt(0):
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
+    case "G".charCodeAt(0):
+      if (modifierMask === 0) { groupSelection(); break; }
+      return;
     case 27: // Escape
       if (draggingMode === DRAG_MOVE_SELECTION && modifierMask === 0) { cancelMove(); break; }
       if (draggingMode === DRAG_NONE && modifierMask === 0) { setSelectedObjects([]); break; }
@@ -626,6 +629,42 @@ function shuffleSelection() {
     newPropsArray[otherIndex].x = tempX;
     newPropsArray[otherIndex].y = tempY;
     newPropsArray[otherIndex].z = tempZ;
+  }
+  renderAndMaybeCommitSelection(selection);
+  renderOrder();
+}
+function groupSelection() {
+  var selection = getEffectiveSelection();
+  var selectionLength = Object.keys(selection).length;
+  if (selectionLength <= 1) return;
+  // find the weighted center (average location)
+  var totalX = 0;
+  var totalY = 0;
+  for (var id in selection) {
+    var newProps = selection[id];
+    totalX += newProps.x;
+    totalY += newProps.y;
+  }
+  // who is closest to the weighted center?
+  var averageX = totalX / selectionLength;
+  var averageY = totalY / selectionLength;
+  var medianNewProps = null;
+  var shortestDistanceSquared = Infinity;
+  for (var id in selection) {
+    var newProps = selection[id];
+    var dx = newProps.x - averageX;
+    var dy = newProps.y - averageY;
+    var distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared < shortestDistanceSquared) {
+      shortestDistanceSquared = distanceSquared;
+      medianNewProps = newProps;
+    }
+  }
+  // everybody move to the center
+  for (var id in selection) {
+    var newProps = selection[id];
+    newProps.x = medianNewProps.x;
+    newProps.y = medianNewProps.y;
   }
   renderAndMaybeCommitSelection(selection);
   renderOrder();
