@@ -213,20 +213,6 @@ function deleteTableAndEverything() {
   consumeNumberModifier();
   // leave the image cache alone
 }
-function bringSelectionToTop() {
-  // effectively do a stable sort.
-  var selection = getEffectiveSelection();
-  var z = findMaxZ(selection);
-  var newPropses = [];
-  for (var id in selection) {
-    newPropses.push(selection[id]);
-  }
-  newPropses.sort(compareZ);
-  newPropses.forEach(function(newProps, i) {
-    newProps.z = z + i + 1;
-  });
-  renderAndMaybeCommitSelection(selection);
-}
 function findMaxZ(excludingSelection) {
   var z = null;
   getObjects().forEach(function(object) {
@@ -258,7 +244,7 @@ var draggingMouseStartX;
 var draggingMouseStartY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
-  if (examiningMode != EXAMINE_NONE) return;
+  if (examiningMode !== EXAMINE_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
   if (object.locked) return; // click thee behind me, satan
@@ -288,11 +274,20 @@ function onObjectMouseDown(event) {
   draggingMode = DRAG_MOVE_SELECTION;
   draggingMouseStartX = eventToMouseX(event, tableDiv);
   draggingMouseStartY = eventToMouseY(event, tableDiv);
-  bringSelectionToTop();
 
-  render(object);
-  renderOrder();
-  resizeTableToFitEverything();
+  // bring selection to top
+  // effectively do a stable sort.
+  var selection = selectedObjectIdToNewProps;
+  var newPropses = [];
+  for (var id in selection) {
+    newPropses.push(selection[id]);
+  }
+  newPropses.sort(compareZ);
+  var z = findMaxZ(selection);
+  newPropses.forEach(function(newProps, i) {
+    newProps.z = z + i + 1;
+  });
+  renderAndMaybeCommitSelection(selection);
 }
 function onObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
@@ -313,7 +308,7 @@ tableDiv.addEventListener("mousedown", function(event) {
   if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
-  if (examiningMode != EXAMINE_NONE) return;
+  if (examiningMode !== EXAMINE_NONE) return;
   draggingMode = DRAG_RECTANGLE_SELECT;
   rectangleSelectStartX = eventToMouseX(event, tableDiv);
   rectangleSelectStartY = eventToMouseY(event, tableDiv);
@@ -489,6 +484,9 @@ function renderAndMaybeCommitSelection(selection) {
   objectsToRender.forEach(render);
   renderOrder();
   resizeTableToFitEverything();
+
+  // it's too late to use this
+  consumeNumberModifier();
 }
 function commitSelection(selection) {
   var move = [];
@@ -783,17 +781,14 @@ function toggleHelp() {
   }
 }
 
-function undo() {
-  if (changeHistory.length === 0) return;
-  var newMove = reverseChange(changeHistory.pop());
+function undo() { undoOrRedo(changeHistory, futureChanges); }
+function redo() { undoOrRedo(futureChanges, changeHistory); }
+function undoOrRedo(thePast, theFuture) {
+  consumeNumberModifier();
+  if (thePast.length === 0) return;
+  var newMove = reverseChange(thePast.pop());
   sendMessage({cmd:"makeAMove", args:newMove});
-  futureChanges.push(newMove);
-}
-function redo() {
-  if (futureChanges.length === 0) return;
-  var newMove = reverseChange(futureChanges.pop());
-  sendMessage({cmd:"makeAMove", args:newMove});
-  changeHistory.push(newMove);
+  theFuture.push(newMove);
 }
 function reverseChange(move) {
   var newMove = [myUser.id];
