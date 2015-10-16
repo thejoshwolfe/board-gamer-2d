@@ -203,6 +203,7 @@ function checkForDoneLoading() {
   getObjects().forEach(render);
   renderOrder();
   resizeTableToFitEverything();
+  fixFloatingThingZ();
 }
 
 function deleteTableAndEverything() {
@@ -215,14 +216,14 @@ function deleteTableAndEverything() {
   // leave the image cache alone
 }
 function findMaxZ(excludingSelection) {
-  var z = null;
+  var maxZ = null;
   getObjects().forEach(function(object) {
     if (excludingSelection != null && object.id in excludingSelection) return;
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
-    if (z == null || object.z > z) z = newProps.z;
+    if (maxZ == null || newProps.z > maxZ) maxZ = newProps.z;
   });
-  return z;
+  return maxZ;
 }
 function fixFloatingThingZ() {
   renderExaminingObjects();
@@ -636,6 +637,7 @@ function cancelMove() {
   draggingMode = DRAG_NONE;
   renderOrder();
   resizeTableToFitEverything();
+  fixFloatingThingZ();
 }
 function shuffleSelection() {
   var selection;
@@ -1245,6 +1247,7 @@ function makeAMove(move, shouldRender) {
     });
     renderOrder();
     resizeTableToFitEverything();
+    fixFloatingThingZ();
   }
   pushChangeToHistory(move);
 }
