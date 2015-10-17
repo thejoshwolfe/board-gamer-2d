@@ -255,6 +255,7 @@ var lastMouseDragY;
 
 var accordionMouseStartX = null;
 var accordionObjectStartX = null;
+var isGKeyDown = false;
 
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
@@ -288,6 +289,7 @@ function onObjectMouseDown(event) {
   draggingMode = DRAG_MOVE_SELECTION;
   lastMouseDragX = eventToMouseX(event, tableDiv);
   lastMouseDragY = eventToMouseY(event, tableDiv);
+  if (isGKeyDown) startAccordion();
 
   // bring selection to top
   // effectively do a stable sort.
@@ -543,7 +545,7 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
     case "G".charCodeAt(0):
-      if (modifierMask === 0 && accordionMouseStartX == null) { groupSelection(); startAccordion(); break; }
+      if (modifierMask === 0 && accordionMouseStartX == null) { groupSelection(); startAccordion(); isGKeyDown = true; break; }
       return;
     case 27: // Escape
       if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
@@ -580,7 +582,7 @@ document.addEventListener("keyup", function(event) {
       unexamine();
       break;
     case "G".charCodeAt(0):
-      if (modifierMask === 0) { stopAccordion(); break; }
+      if (modifierMask === 0) { stopAccordion(); isGKeyDown = false; break; }
       return;
     default: return;
   }
