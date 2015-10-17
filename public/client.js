@@ -406,6 +406,7 @@ document.addEventListener("mouseup", function(event) {
     }
     commitSelection(selectedObjectIdToNewProps);
     resizeTableToFitEverything();
+    renderOrder();
   }
 });
 
