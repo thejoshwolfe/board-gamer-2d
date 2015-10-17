@@ -252,6 +252,10 @@ var examiningObjectsById = {};
 var hoverObject;
 var lastMouseDragX;
 var lastMouseDragY;
+
+var accordionMouseStartX = null;
+var accordionObjectStartX = null;
+
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
   if (examiningMode !== EXAMINE_NONE) return;
@@ -352,20 +356,36 @@ document.addEventListener("mousemove", function(event) {
       setSelectedObjects(newSelectedObjects);
     })();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
-    // pixels
-    var dx = x - lastMouseDragX;
-    var dy = y - lastMouseDragY;
-    lastMouseDragX = x;
-    lastMouseDragY = y;
-    Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
-      var object = objectsById[id];
-      var newProps = selectedObjectIdToNewProps[id];
-      newProps.x = Math.round(newProps.x + dx);
-      newProps.y = Math.round(newProps.y + dy);
-      render(object);
-    });
+    if (accordionMouseStartX != null) {
+      // accordion drag
+      var dx = x - accordionMouseStartX;
+      var objects = [];
+      for (var id in selectedObjectIdToNewProps) {
+        objects.push(objectsById[id]);
+      }
+      objects.sort(compareZ);
+      objects.forEach(function(object, i) {
+        var newProps = selectedObjectIdToNewProps[object.id];
+        var factor = i === objects.length - 1 ? 1 : i / (objects.length - 1);
+        newProps.x = Math.round(accordionObjectStartX + dx * factor);
+        render(object);
+      });
+    } else {
+      // normal drag
+      var dx = x - lastMouseDragX;
+      var dy = y - lastMouseDragY;
+      Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
+        var object = objectsById[id];
+        var newProps = selectedObjectIdToNewProps[id];
+        newProps.x = Math.round(newProps.x + dx);
+        newProps.y = Math.round(newProps.y + dy);
+        render(object);
+      });
+    }
     renderOrder();
     resizeTableToFitEverything();
+    lastMouseDragX = x;
+    lastMouseDragY = y;
   }
 });
 document.addEventListener("mouseup", function(event) {
@@ -523,7 +543,7 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0) { flipOverSelection(); break; }
       return;
     case "G".charCodeAt(0):
-      if (modifierMask === 0) { groupSelection(); break; }
+      if (modifierMask === 0 && accordionMouseStartX == null) { groupSelection(); startAccordion(); break; }
       return;
     case 27: // Escape
       if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
@@ -559,10 +579,27 @@ document.addEventListener("keyup", function(event) {
     case "Z".charCodeAt(0):
       unexamine();
       break;
+    case "G".charCodeAt(0):
+      if (modifierMask === 0) { stopAccordion(); break; }
+      return;
     default: return;
   }
   event.preventDefault();
 });
+
+function startAccordion() {
+  if (draggingMode !== DRAG_MOVE_SELECTION) return;
+  accordionMouseStartX = lastMouseDragX;
+  for (var id in selectedObjectIdToNewProps) {
+    // they're all the same
+    accordionObjectStartX = selectedObjectIdToNewProps[id].x;
+    break;
+  }
+}
+function stopAccordion() {
+  accordionMouseStartX = null;
+  accordionObjectStartX = null;
+}
 
 function flipOverSelection() {
   var selection = getEffectiveSelection();
