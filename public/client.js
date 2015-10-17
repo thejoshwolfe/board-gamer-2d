@@ -228,7 +228,6 @@ function findMaxZ(excludingSelection) {
 function fixFloatingThingZ() {
   renderExaminingObjects();
   var maxZ = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
-  console.log("fix it:", maxZ);
   document.getElementById("roomInfoDiv").style.zIndex = maxZ + 1;
   document.getElementById("helpDiv").style.zIndex = maxZ + 2;
 }
@@ -251,8 +250,8 @@ var examiningMode = EXAMINE_NONE;
 var examiningObjectsById = {};
 
 var hoverObject;
-var draggingMouseStartX;
-var draggingMouseStartY;
+var lastMouseDragX;
+var lastMouseDragY;
 function onObjectMouseDown(event) {
   if (event.button !== 0) return;
   if (examiningMode !== EXAMINE_NONE) return;
@@ -283,8 +282,8 @@ function onObjectMouseDown(event) {
 
   // begin drag
   draggingMode = DRAG_MOVE_SELECTION;
-  draggingMouseStartX = eventToMouseX(event, tableDiv);
-  draggingMouseStartY = eventToMouseY(event, tableDiv);
+  lastMouseDragX = eventToMouseX(event, tableDiv);
+  lastMouseDragY = eventToMouseY(event, tableDiv);
 
   // bring selection to top
   // effectively do a stable sort.
@@ -354,59 +353,16 @@ document.addEventListener("mousemove", function(event) {
     })();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     // pixels
-    var dx = x - draggingMouseStartX;
-    var dy = y - draggingMouseStartY;
-    objectsWithSnapZones.sort(compareZ);
+    var dx = x - lastMouseDragX;
+    var dy = y - lastMouseDragY;
+    lastMouseDragX = x;
+    lastMouseDragY = y;
     Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
-      // units
-      var objectNewX = object.x + dx / gameDefinition.coordinates.unitWidth;
-      var objectNewY = object.y + dy / gameDefinition.coordinates.unitHeight;
-      // snap zones
-      (function() {
-        for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
-          var containerObject = objectsWithSnapZones[i];
-          var containerRelativeX = objectNewX - containerObject.x;
-          var containerRelativeY = objectNewY - containerObject.y;
-          var containerObjectDefinition = getObjectDefinition(containerObject.id);
-          for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
-            var snapZone = containerObjectDefinition.snapZones[j];
-            var snapZoneRelativeX = containerRelativeX - snapZone.x;
-            var snapZoneRelativeY = containerRelativeY - snapZone.y;
-            if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
-            if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
-            // this is the zone for us
-            var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
-            var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
-            var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
-            var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
-            if (!inBoundsX && !inBoundsY) {
-              // on an outside corner. we need to pick an edge to rub.
-              if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
-                // x is further off
-                inBoundsX = true;
-              } else {
-                // y is further off
-                inBoundsY = true;
-              }
-            }
-            if (inBoundsY) {
-              objectNewX = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
-            }
-            if (inBoundsX) {
-              objectNewY = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
-            }
-            return;
-          }
-        }
-      })();
-      if (!(newProps.x === objectNewX &&
-            newProps.y === objectNewY)) {
-        newProps.x = objectNewX;
-        newProps.y = objectNewY;
-        render(object);
-      }
+      newProps.x += dx / gameDefinition.coordinates.unitWidth;
+      newProps.y += dy / gameDefinition.coordinates.unitWidth;
+      render(object);
     });
     renderOrder();
     resizeTableToFitEverything();
@@ -418,6 +374,14 @@ document.addEventListener("mouseup", function(event) {
     renderSelectionRectangle();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
+    // snap everything really quick
+    for (var id in selectedObjectIdToNewProps) {
+      var object = objectsById[id];
+      var newProps = selectedObjectIdToNewProps[id];
+      if (snapToSnapZones(newProps)) {
+        render(object, true);
+      }
+    }
     commitSelection(selectedObjectIdToNewProps);
     resizeTableToFitEverything();
   }
@@ -1072,6 +1036,46 @@ function resizeTableToFitEverything() {
   }
   tableDiv.style.width  = maxX + "px";
   tableDiv.style.height = maxY + "px";
+}
+
+function snapToSnapZones(newProps) {
+  objectsWithSnapZones.sort(compareZ);
+  for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
+    var containerObject = objectsWithSnapZones[i];
+    var containerRelativeX = newProps.x - containerObject.x;
+    var containerRelativeY = newProps.y - containerObject.y;
+    var containerObjectDefinition = getObjectDefinition(containerObject.id);
+    for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
+      var snapZone = containerObjectDefinition.snapZones[j];
+      var snapZoneRelativeX = containerRelativeX - snapZone.x;
+      var snapZoneRelativeY = containerRelativeY - snapZone.y;
+      if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
+      if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
+      // this is the zone for us
+      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
+      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
+      var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
+      var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
+      if (!inBoundsX && !inBoundsY) {
+        // on an outside corner. we need to pick an edge to rub.
+        if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
+          // x is further off
+          inBoundsX = true;
+        } else {
+          // y is further off
+          inBoundsY = true;
+        }
+      }
+      if (inBoundsY) {
+        newProps.x = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
+      }
+      if (inBoundsX) {
+        newProps.y = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
+      }
+      return inBoundsX || inBoundsY;
+    }
+  }
+  return false;
 }
 
 function getObjects() {
