@@ -94,11 +94,11 @@ function initGame(game, history) {
     if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
     var object = {
       id: id,
-      x: objectDefinition.x,
-      y: objectDefinition.y,
+      x: gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * objectDefinition.x,
+      y: gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * objectDefinition.y,
       z: objectDefinition.z || 0,
-      width: objectDefinition.width,
-      height: objectDefinition.height,
+      width:  gameDefinition.coordinates.unitWidth  * objectDefinition.width,
+      height: gameDefinition.coordinates.unitHeight * objectDefinition.height,
       faces: objectDefinition.faces,
       snapZones: objectDefinition.snapZones || [],
       locked: !!objectDefinition.locked,
@@ -115,7 +115,7 @@ function initGame(game, history) {
     var objectDiv = getObjectDiv(object.id);
     objectDiv.addEventListener("mousedown", onObjectMouseDown);
     objectDiv.addEventListener("mousemove", onObjectMouseMove);
-    objectDiv.addEventListener("mouseout", onObjectMouseOut);
+    objectDiv.addEventListener("mouseout",  onObjectMouseOut);
   }
   // reassign all the z's to be unique
   var objects = getObjects();
@@ -334,10 +334,10 @@ document.addEventListener("mousemove", function(event) {
     rectangleSelectEndY = y;
     renderSelectionRectangle();
     (function() {
-      var minX = (rectangleSelectStartX - gameDefinition.coordinates.originX) / gameDefinition.coordinates.unitWidth;
-      var minY = (rectangleSelectStartY - gameDefinition.coordinates.originY) / gameDefinition.coordinates.unitHeight;
-      var maxX = (rectangleSelectEndX   - gameDefinition.coordinates.originX) / gameDefinition.coordinates.unitWidth;
-      var maxY = (rectangleSelectEndY   - gameDefinition.coordinates.originY) / gameDefinition.coordinates.unitHeight;
+      var minX = rectangleSelectStartX;
+      var minY = rectangleSelectStartY;
+      var maxX = rectangleSelectEndX;
+      var maxY = rectangleSelectEndY;
       if (minX > maxX) { var tmp = maxX; maxX = minX; minX = tmp; }
       if (minY > maxY) { var tmp = maxY; maxY = minY; minY = tmp; }
       var newSelectedObjects = [];
@@ -360,8 +360,8 @@ document.addEventListener("mousemove", function(event) {
     Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
-      newProps.x += dx / gameDefinition.coordinates.unitWidth;
-      newProps.y += dy / gameDefinition.coordinates.unitWidth;
+      newProps.x = Math.round(newProps.x + dx);
+      newProps.y = Math.round(newProps.y + dy);
       render(object);
     });
     renderOrder();
@@ -870,31 +870,22 @@ function render(object, isAnimated) {
   }
   var objectDiv = getObjectDiv(object.id);
   var facePath = object.faces[faceIndex];
-  var pixelRect = getPixelRect(x, y, object.width, object.height);
   var imageUrlUrl = facePathToUrlUrl[facePath];
   if (isAnimated) {
     objectDiv.classList.add("animatedMovement");
   } else {
     objectDiv.classList.remove("animatedMovement");
   }
-  objectDiv.style.left = pixelRect.x + "px";
-  objectDiv.style.top  = pixelRect.y + "px";
-  objectDiv.style.width  = pixelRect.width;
-  objectDiv.style.height = pixelRect.height;
+  objectDiv.style.left = x + "px";
+  objectDiv.style.top  = y + "px";
+  objectDiv.style.width  = object.width;
+  objectDiv.style.height = object.height;
   objectDiv.style.zIndex = z;
   if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
     objectDiv.dataset.facePath = facePath;
     objectDiv.style.backgroundImage = imageUrlUrl;
   }
   objectDiv.style.display = "block";
-}
-function getPixelRect(x, y, width, height) {
-  return {
-    x: tableDiv.offsetLeft + gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * x,
-    y: tableDiv.offsetTop  + gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * y,
-    width:  gameDefinition.coordinates.unitWidth  * width,
-    height: gameDefinition.coordinates.unitHeight * height,
-  };
 }
 function renderExaminingObjects() {
   // sort by z order. bottom-to-top is left-to-right.
@@ -926,10 +917,10 @@ function renderExaminingObjects() {
     bigHeight = windowHeight;
   }
   var zoomFactor = bigHeight / maxHeight;
-  if (zoomFactor < gameDefinition.coordinates.unitWidth) {
+  if (zoomFactor < 1.0) {
     // don't ever zoom out with this function. prefer overlapping objects.
-    zoomFactor = gameDefinition.coordinates.unitWidth;
-    totalWidth = windowWidth / gameDefinition.coordinates.unitWidth;
+    zoomFactor = 1.0;
+    totalWidth = windowWidth;
   }
   var averageWidth = totalWidth / objects.length;
 
@@ -1028,9 +1019,8 @@ function resizeTableToFitEverything() {
   var padding = 8;
   for (var id in objectsById) {
     var object = objectsById[id];
-    var pixelRect = getPixelRect(object.x, object.y, object.width, object.height);
-    var x = pixelRect.x + pixelRect.width  + padding;
-    var y = pixelRect.y + pixelRect.height + padding;
+    var x = object.x + object.width  + padding;
+    var y = object.y + object.height + padding;
     if (x > maxX) maxX = x;
     if (y > maxY) maxY = y;
   }
@@ -1040,22 +1030,28 @@ function resizeTableToFitEverything() {
 
 function snapToSnapZones(newProps) {
   objectsWithSnapZones.sort(compareZ);
+  var unitWidth  = gameDefinition.coordinates.unitWidth;
+  var unitHeight = gameDefinition.coordinates.unitHeight;
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
     var containerRelativeX = newProps.x - containerObject.x;
     var containerRelativeY = newProps.y - containerObject.y;
     var containerObjectDefinition = getObjectDefinition(containerObject.id);
     for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
-      var snapZone = containerObjectDefinition.snapZones[j];
-      var snapZoneRelativeX = containerRelativeX - snapZone.x;
-      var snapZoneRelativeY = containerRelativeY - snapZone.y;
-      if (snapZoneRelativeX < -1 || snapZoneRelativeX > snapZone.width)  continue; // way out of bounds
-      if (snapZoneRelativeY < -1 || snapZoneRelativeY > snapZone.height) continue; // way out of bounds
+      var snapZoneDefinition = containerObjectDefinition.snapZones[j];
+      var snapZoneX      = snapZoneDefinition.x      * unitWidth;
+      var snapZoneY      = snapZoneDefinition.y      * unitHeight;
+      var snapZoneWidth  = snapZoneDefinition.width  * unitWidth;
+      var snapZoneHeight = snapZoneDefinition.height * unitHeight;
+      var snapZoneRelativeX = containerRelativeX - snapZoneX;
+      var snapZoneRelativeY = containerRelativeY - snapZoneY * unitHeight;
+      if (snapZoneRelativeX < -unitWidth  || snapZoneRelativeX > snapZoneWidth)  continue; // way out of bounds
+      if (snapZoneRelativeY < -unitHeight || snapZoneRelativeY > snapZoneHeight) continue; // way out of bounds
       // this is the zone for us
-      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX);
-      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY);
-      var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZone.width;
-      var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZone.height;
+      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX / unitWidth)  * unitWidth;
+      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY / unitHeight) * unitHeight;
+      var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZoneWidth;
+      var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZoneHeight;
       if (!inBoundsX && !inBoundsY) {
         // on an outside corner. we need to pick an edge to rub.
         if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
@@ -1067,10 +1063,10 @@ function snapToSnapZones(newProps) {
         }
       }
       if (inBoundsY) {
-        newProps.x = roundedSnapZoneRelativeX + snapZone.x + containerObject.x;
+        newProps.x = roundedSnapZoneRelativeX + snapZoneX + containerObject.x;
       }
       if (inBoundsX) {
-        newProps.y = roundedSnapZoneRelativeY + snapZone.y + containerObject.y;
+        newProps.y = roundedSnapZoneRelativeY + snapZoneY + containerObject.y;
       }
       return inBoundsX || inBoundsY;
     }
