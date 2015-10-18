@@ -11,16 +11,16 @@ http://board-gamer-2d.wolfesoftware.com/
 Working:
 
  * Create and join rooms. Empty rooms are deleted after an hour.
- * Multiplayer drag and drop objects around on the table.
- * Shuffle a deck of cards, roll dice.
- * Some objects are "locked" to serve as a background.
- * Background objects can define a grid where other objects snap, such as a checkerboard.
- * Press Z while hovering to examine the object close up.
+ * Some objects are supported out of the box: Deck of 52 playing cards, d6 dice, checker board and checkers.
+ * Decent controls to manipulate objects: Examine, group together, spread apart, move around, flip over.
+ * RNG Controls: Shuffle a stack, roll objects to show a random side.
+ * Multiplayer experience is synced when you let go of the mouse, requiring fairly low network traffic.
+ * Objects can be "locked" to serve as a background, and they can define a snap-to-grid area.
+ * Undo/redo history is maintained server-side per room, and is accessible by any client even after joining late or refreshing the page.
 
 Planned:
 
  * Multiplayer gameplay:
-   * A command to spread a stack of cards to look at all the cards side-by-side.
    * A "hand" of cards that you can see and others can't.
    * Spawn textboxes on the table that everyone can see and edit.
    * Number counters for keeping track of score. Basic calculator functions, like add and subtract.
