@@ -104,11 +104,11 @@ function initGame(game, history) {
     if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
     var object = {
       id: id,
-      x: gameDefinition.coordinates.originX + gameDefinition.coordinates.unitWidth  * objectDefinition.x,
-      y: gameDefinition.coordinates.originY + gameDefinition.coordinates.unitHeight * objectDefinition.y,
+      x: objectDefinition.x,
+      y: objectDefinition.y,
       z: objectDefinition.z || 0,
-      width:  gameDefinition.coordinates.unitWidth  * objectDefinition.width,
-      height: gameDefinition.coordinates.unitHeight * objectDefinition.height,
+      width:  objectDefinition.width,
+      height: objectDefinition.height,
       faces: objectDefinition.faces,
       snapZones: objectDefinition.snapZones || [],
       locked: !!objectDefinition.locked,
@@ -1090,8 +1090,6 @@ function resizeTableToFitEverything() {
 
 function snapToSnapZones(newProps) {
   objectsWithSnapZones.sort(compareZ);
-  var unitWidth  = gameDefinition.coordinates.unitWidth;
-  var unitHeight = gameDefinition.coordinates.unitHeight;
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
     var containerRelativeX = newProps.x - containerObject.x;
@@ -1099,17 +1097,19 @@ function snapToSnapZones(newProps) {
     var containerObjectDefinition = getObjectDefinition(containerObject.id);
     for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
       var snapZoneDefinition = containerObjectDefinition.snapZones[j];
-      var snapZoneX      = snapZoneDefinition.x      * unitWidth;
-      var snapZoneY      = snapZoneDefinition.y      * unitHeight;
-      var snapZoneWidth  = snapZoneDefinition.width  * unitWidth;
-      var snapZoneHeight = snapZoneDefinition.height * unitHeight;
+      var snapZoneX      = snapZoneDefinition.x      != null ? snapZoneDefinition.x      : 0;
+      var snapZoneY      = snapZoneDefinition.y      != null ? snapZoneDefinition.y      : 0;
+      var snapZoneWidth  = snapZoneDefinition.width  != null ? snapZoneDefinition.width  : containerObjectDefinition.width;
+      var snapZoneHeight = snapZoneDefinition.height != null ? snapZoneDefinition.height : containerObjectDefinition.height;
+      var cellWidth  = snapZoneDefinition.cellWidth;
+      var cellHeight = snapZoneDefinition.cellHeight;
       var snapZoneRelativeX = containerRelativeX - snapZoneX;
-      var snapZoneRelativeY = containerRelativeY - snapZoneY * unitHeight;
-      if (snapZoneRelativeX < -unitWidth  || snapZoneRelativeX > snapZoneWidth)  continue; // way out of bounds
-      if (snapZoneRelativeY < -unitHeight || snapZoneRelativeY > snapZoneHeight) continue; // way out of bounds
+      var snapZoneRelativeY = containerRelativeY - snapZoneY;
+      if (snapZoneRelativeX < -cellWidth  || snapZoneRelativeX > snapZoneWidth)  continue; // way out of bounds
+      if (snapZoneRelativeY < -cellHeight || snapZoneRelativeY > snapZoneHeight) continue; // way out of bounds
       // this is the zone for us
-      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX / unitWidth)  * unitWidth;
-      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY / unitHeight) * unitHeight;
+      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX / cellWidth)  * cellWidth;
+      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY / cellHeight) * cellHeight;
       var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZoneWidth;
       var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZoneHeight;
       if (!inBoundsX && !inBoundsY) {
