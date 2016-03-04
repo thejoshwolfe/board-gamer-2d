@@ -79,6 +79,7 @@ var facePathToUrlUrl = {
 
 var gameDefinition;
 var objectDefinitionsById;
+var objectIndexesById;
 var objectsById;
 var objectsWithSnapZones; // cache
 var changeHistory;
@@ -86,6 +87,7 @@ var futureChanges;
 function initGame(game, history) {
   gameDefinition = game;
   objectDefinitionsById = {};
+  objectIndexesById = {};
   objectsById = {};
   objectsWithSnapZones = [];
   changeHistory = [];
@@ -93,8 +95,9 @@ function initGame(game, history) {
   for (var i = 0; i < gameDefinition.objects.length; i++) {
     var rawDefinition = gameDefinition.objects[i];
     var id = rawDefinition.id;
-    if (id == null) id = "object-" + i;
+    if (id == null) id = autogenerateId(i);
     objectDefinitionsById[id] = rawDefinition;
+    objectIndexesById[id] = i;
     if (rawDefinition.prototype) continue;
 
     var objectDefinition = getObjectDefinition(id);
@@ -212,11 +215,20 @@ function checkForDoneLoading() {
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
+function autogenerateId(i) {
+  return "object-" + i;
+}
+function getIdFromIndex(i) {
+  var id = gameDefinition.objects[i].id;
+  if (id == null) id = autogenerateId(i);
+  return id;
+}
 
 function deleteTableAndEverything() {
   tableDiv.innerHTML = "";
   gameDefinition = null;
   objectDefinitionsById = null;
+  objectIndexesById = null;
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
@@ -506,7 +518,7 @@ function commitSelection(selection) {
           object.z === newProps.z &&
           object.faceIndex === newProps.faceIndex)) {
       move.push(
-        object.id,
+        objectIndexesById[object.id],
         object.x,
         object.y,
         object.z,
@@ -833,7 +845,7 @@ function reverseChange(move) {
   var i = 0;
   move[i++]; // userId
   while (i < move.length) {
-    var object = objectsById[move[i++]];
+    var object = objectsById[getIdFromIndex(move[i++])];
     var fromX         =      move[i++];
     var fromY         =      move[i++];
     var fromZ         =      move[i++];
@@ -854,7 +866,7 @@ function reverseChange(move) {
       newProps.faceIndex = object.faceIndex;
     }
     newMove.push(
-      object.id,
+      objectIndexesById[object.id],
       toX,
       toY,
       toZ,
@@ -1266,7 +1278,7 @@ function makeAMove(move, shouldRender) {
   var userId = move[i++];
   if (userId === myUser.id) return;
   while (i < move.length) {
-    var object = objectsById[move[i++]];
+    var object = objectsById[getIdFromIndex(move[i++])];
     var fromX         =      move[i++];
     var fromY         =      move[i++];
     var fromZ         =      move[i++];
