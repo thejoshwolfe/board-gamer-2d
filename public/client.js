@@ -917,6 +917,7 @@ function renderUserList() {
 
 function render(object, isAnimated) {
   if (object.id in examiningObjectsById) return; // different handling for this
+  var objectDefinition = getObjectDefinition(object.id);
   var x = object.x;
   var y = object.y;
   var z = object.z;
@@ -928,9 +929,10 @@ function render(object, isAnimated) {
     z = newProps.z;
     faceIndex = newProps.faceIndex;
   }
+  if (objectDefinition.locked) {
+    z = 0;
+  }
   var objectDiv = getObjectDiv(object.id);
-  var facePath = object.faces[faceIndex];
-  var imageUrlUrl = facePathToUrlUrl[facePath];
   if (isAnimated) {
     objectDiv.classList.add("animatedMovement");
   } else {
@@ -941,9 +943,20 @@ function render(object, isAnimated) {
   objectDiv.style.width  = object.width;
   objectDiv.style.height = object.height;
   objectDiv.style.zIndex = z;
-  if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
-    objectDiv.dataset.facePath = facePath;
-    objectDiv.style.backgroundImage = imageUrlUrl;
+  if (object.faces != null) {
+    var facePath = object.faces[faceIndex];
+    var imageUrlUrl = facePathToUrlUrl[facePath];
+    if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
+      objectDiv.dataset.facePath = facePath;
+      objectDiv.style.backgroundImage = imageUrlUrl;
+    }
+  } else if (objectDefinition.backgroundColor != null) {
+    objectDiv.style.backgroundColor = objectDefinition.backgroundColor;
+    objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
+    objectDiv.style.borderWidth = "3px";
+    objectDiv.style.borderStyle = "solid";
+  } else {
+    throw new Error("don't know how to render object");
   }
   objectDiv.style.display = "block";
 }
