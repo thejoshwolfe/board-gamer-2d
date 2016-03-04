@@ -78,18 +78,25 @@ var facePathToUrlUrl = {
 };
 
 var gameDefinition;
+var objectDefinitionsById;
 var objectsById;
 var objectsWithSnapZones; // cache
 var changeHistory;
 var futureChanges;
 function initGame(game, history) {
   gameDefinition = game;
+  objectDefinitionsById = {};
   objectsById = {};
   objectsWithSnapZones = [];
   changeHistory = [];
   futureChanges = [];
-  for (var id in gameDefinition.objects) {
-    if (gameDefinition.objects[id].prototype) continue;
+  for (var i = 0; i < gameDefinition.objects.length; i++) {
+    var rawDefinition = gameDefinition.objects[i];
+    var id = rawDefinition.id;
+    if (id == null) id = "object-" + i;
+    objectDefinitionsById[id] = rawDefinition;
+    if (rawDefinition.prototype) continue;
+
     var objectDefinition = getObjectDefinition(id);
     if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
     var object = {
@@ -141,7 +148,7 @@ function getObjectDefinition(id) {
   return result;
 
   function recurse(id, depth) {
-    var definition = gameDefinition.objects[id];
+    var definition = objectDefinitionsById[id];
     for (var property in definition) {
       if (property === "prototypes") continue; // special handling
       if (property === "prototype" && depth !== 0) continue;  // don't inherit this property
@@ -209,6 +216,7 @@ function checkForDoneLoading() {
 function deleteTableAndEverything() {
   tableDiv.innerHTML = "";
   gameDefinition = null;
+  objectDefinitionsById = null;
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
