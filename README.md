@@ -16,18 +16,19 @@ Working:
  * RNG Controls: Shuffle a stack, roll objects to show a random side.
  * Multiplayer experience is synced when you let go of the mouse, requiring fairly low network traffic.
  * Objects can be "locked" to serve as a background, and they can define a snap-to-grid area.
+ * Individual players can have a special area where only they can see all sides of the objects in it;
+   in other words, their hand of cards is hidden from opponents.
  * Undo/redo history is maintained server-side per room, and is accessible by any client even after joining late or refreshing the page.
 
 Planned:
 
  * Multiplayer gameplay:
-   * A "hand" of cards that you can see and others can't.
    * Spawn textboxes on the table that everyone can see and edit.
    * Number counters for keeping track of score. Basic calculator functions, like add and subtract.
    * A "turn order" widget that accepts a hotkey for "my turn is done", and plays a sound for the next player.
    * A stopwatch widget and a timer widget.
    * An interactive undo/redo tree explorer.
-   * Sound effects?
+   * Sound effects and animations for shuffling and some other actions.
  * Workshop for creating your own games:
    * Any player can switch in and out of workshop mode while playing a game.
    * Upload images, crop/rotate images.
@@ -54,7 +55,7 @@ from Candyland to Settlers of Catan to Dutch Blitz, but will not include any cop
 The intention is that users will upload their own ideas for games, and try them out with this project,
 eventually perhaps realizing their ideas in the real world through the use of a print shop or whatever.
 
-Some styles of games are outside the scope of this project, such as Mousetrap or Hungry Hungry Hippos, which rely on a 3d physics.
+Some styles of games are outside the scope of this project, such as Mousetrap or Hungry Hungry Hippos, which rely on 3d physics.
 
 Board Gamer 2d is not trying to compete with board game companies by providing a free alternative to buying the real game.
 Rather, this enables board game creators to prototype ideas before spending money to see their ideas realized with physical objects.
@@ -74,7 +75,7 @@ Tabletop Simulator must be trusted to run natively on your system after being in
 Board Gamer 2d runs in the browser.
 
 Tabletop Simulator has a community through Steam Workshop.
-Board Gamer 2d has no clear plan of a community solution.
+Board Gamer 2d has no clear plan for a community solution.
 
 Tabletop Simulator is a 3d physics sandbox.
 Board Gamer 2d is a 2d object manipulation sandbox.
