@@ -82,6 +82,7 @@ var objectDefinitionsById;
 var objectIndexesById;
 var objectsById;
 var objectsWithSnapZones; // cache
+var hiderContainers; // cache
 var changeHistory;
 var futureChanges;
 function initGame(game, history) {
@@ -90,6 +91,7 @@ function initGame(game, history) {
   objectIndexesById = {};
   objectsById = {};
   objectsWithSnapZones = [];
+  hiderContainers = [];
   changeHistory = [];
   futureChanges = [];
   for (var i = 0; i < gameDefinition.objects.length; i++) {
@@ -116,6 +118,7 @@ function initGame(game, history) {
     };
     objectsById[id] = object;
     if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
+    if (objectDefinition.visionWhitelist != null) hiderContainers.push(object);
 
     tableDiv.insertAdjacentHTML("beforeend",
       '<div id="object-'+id+'" data-id="'+id+'" class="gameObject" style="display:none;">' +
@@ -173,6 +176,11 @@ function getObjectDefinition(id) {
       });
     }
   }
+}
+function resolveFace(face) {
+  if (face === "front") return 0;
+  if (face === "back") return 1;
+  return face;
 }
 function preloadImagePath(path) {
   var url = facePathToUrlUrl[path];
@@ -250,6 +258,17 @@ function fixFloatingThingZ() {
   renderExaminingObjects();
   var z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
+  hiderContainers.forEach(function(object) {
+    var objectDefinition = getObjectDefinition(object.id);
+    var objectDiv = getObjectDiv(object.id);
+    if (objectDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+      // blocked
+      objectDiv.style.zIndex = z++;
+    } else {
+      // see it
+      objectDiv.style.zIndex = object.z;
+    }
+  });
   document.getElementById("roomInfoDiv").style.zIndex = z++;
   document.getElementById("helpDiv").style.zIndex = z++;
   modalMaskDiv.style.zIndex = z++;
@@ -1005,6 +1024,9 @@ yourRoleDropdown.addEventListener("change", function() {
     // anticipate
     myUser.role = role;
     renderUserList();
+    // hide/show objects
+    getObjects().forEach(render);
+    fixFloatingThingZ();
   }, 0);
 });
 document.getElementById("closeEditUserButton").addEventListener("click", closeDialog);
@@ -1025,6 +1047,28 @@ function render(object, isAnimated) {
   }
   if (objectDefinition.locked) {
     z = 0;
+  } else {
+    for (var i = 0; i < hiderContainers.length; i++) {
+      var hiderContainer = hiderContainers[i];
+      if (hiderContainer.x <= x && x + object.width  <= hiderContainer.x + hiderContainer.width &&
+          hiderContainer.y <= y && y + object.height <= hiderContainer.y + hiderContainer.height) {
+        var hiderContainerDefinition = getObjectDefinition(hiderContainer.id);
+        if (hiderContainerDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+          // blocked
+          var forbiddenFaces = hiderContainerDefinition.hideFaces.map(resolveFace);
+          var betterFaceIndex = -1;
+          for (var j = 0; j < object.faces.length; j++) {
+            var tryThisIndex = (faceIndex + j) % object.faces.length;
+            if (forbiddenFaces.indexOf(tryThisIndex) === -1) {
+              betterFaceIndex = tryThisIndex;
+              break;
+            }
+          }
+          faceIndex = betterFaceIndex;
+        }
+        break;
+      }
+    }
   }
   var objectDiv = getObjectDiv(object.id);
   if (isAnimated) {
@@ -1049,6 +1093,7 @@ function render(object, isAnimated) {
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
     objectDiv.style.borderStyle = "solid";
+    objectDiv.style.pointerEvents = "none";
   } else {
     throw new Error("don't know how to render object");
   }
