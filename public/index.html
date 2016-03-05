@@ -53,6 +53,28 @@
         background-color: rgba(224,224,224,0.5);
         font-size: 20pt; font-family: monospace; font-weight: bold;
       }
+      #closetDiv {
+        position: fixed;
+        top: 100%;
+        left: 100%;
+        transform: translate(-100%, -100%);
+        padding: 0.2em;
+        background-color: rgba(224,224,224,0.5);
+        font-size: 15pt; font-family: monospace; font-weight: bold;
+      }
+      #closetDiv p {
+        margin: 0px;
+      }
+      #closetDiv img {
+        vertical-align: middle;
+      }
+      #closetDiv li {
+        white-space: nowrap;
+      }
+      #closetShowHideButton:hover {
+        text-decoration: underline;
+        cursor: pointer;
+      }
       #editUserDiv {
         position: fixed;
         left: 50%; top: 50%;
@@ -148,6 +170,10 @@
         <ul id="userListUl"></ul>
       </div>
       <div id="numberBufferDiv" style="display: none;"></div>
+      <div id="closetDiv">
+        <p id="closetShowHideButton" title="Click to show/hide">Closet</p>
+        <ul id="closetUl"></ul>
+      </div>
       <div id="editUserDiv" style="display: none;">
         <p>
           <label>Name: <input id="yourNameTextbox" placeholder="Your name" maxlength=16></label>

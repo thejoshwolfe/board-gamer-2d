@@ -864,6 +864,45 @@ function renderHelp() {
   }
 }
 
+var closetObjects = null;
+var showCloset = false;
+
+var closetShowHideButton = document.getElementById("closetShowHideButton");
+var closetUl = document.getElementById("closetUl");
+closetShowHideButton.addEventListener("click", function(event) {
+  event.preventDefault();
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  if (showCloset) {
+    closetUl.innerHTML = "";
+    showCloset = false;
+    return;
+  }
+  showCloset = true;
+  if (closetObjects == null) {
+    // lazy load
+    closetObjects = "loading";
+    httpGet("closet.json", function(result) {
+      closetObjects = JSON.parse(result);
+      if (showCloset) renderCloset();
+    });
+    return;
+  } else if (closetObjects === "loading") {
+    // 3 clicks before the server responded with that json
+    return;
+  }
+  renderCloset();
+});
+function renderCloset() {
+  closetUl.innerHTML = closetObjects.map(function(closetObject) {
+    var thumbnailPath   = closetObject.thumbnail       || closetObject.faces[0];
+    var thumbnailWidth  = closetObject.thumbnailWidth  || 25;
+    var thumbnailHeight = closetObject.thumbnailHeight || 25;
+    var closetName      = closetObject.closetName;
+    return '<li><img src="'+thumbnailPath+'" width='+thumbnailWidth+' height='+thumbnailHeight+'>'+closetName+'</li>';
+  }).join("");
+}
+
 function undo() { undoOrRedo(changeHistory, futureChanges); }
 function redo() { undoOrRedo(futureChanges, changeHistory); }
 function undoOrRedo(thePast, theFuture) {
@@ -1534,6 +1573,15 @@ function clamp(n, min, max) {
   if (n < min) return min;
   if (n > max) return max;
   return n;
+}
+
+function httpGet(url, cb) {
+  var request = new XMLHttpRequest();
+  request.addEventListener("load", function() {
+    cb(request.responseText);
+  });
+  request.open("GET", url);
+  request.send();
 }
 
 setScreenMode(SCREEN_MODE_LOGIN);
