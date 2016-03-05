@@ -129,6 +129,12 @@ function initGame(game, history) {
     objectDiv.addEventListener("mousedown", onObjectMouseDown);
     objectDiv.addEventListener("mousemove", onObjectMouseMove);
     objectDiv.addEventListener("mouseout",  onObjectMouseOut);
+    if (objectDefinition.backgroundColor != null) {
+      // add a background div
+      tableDiv.insertAdjacentHTML("beforeend",
+        '<div id="background-'+id+'" class="backgroundObject" style="display:none;"></div>'
+      );
+    }
   }
   // reassign all the z's to be unique
   var objects = getObjects();
@@ -1089,15 +1095,34 @@ function render(object, isAnimated) {
       objectDiv.style.backgroundImage = imageUrlUrl;
     }
   } else if (objectDefinition.backgroundColor != null) {
-    objectDiv.style.backgroundColor = objectDefinition.backgroundColor;
+    objectDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
     objectDiv.style.borderStyle = "solid";
     objectDiv.style.pointerEvents = "none";
+    // adjust rectangle, because the border screws up everything
+    objectDiv.style.left = (x - 3) + "px";
+    objectDiv.style.top  = (y - 3) + "px";
   } else {
     throw new Error("don't know how to render object");
   }
   objectDiv.style.display = "block";
+
+  if (objectDefinition.backgroundColor != null) {
+    var backgroundDiv = getBackgroundDiv(object.id);
+    if (isAnimated) {
+      backgroundDiv.classList.add("animatedMovement");
+    } else {
+      backgroundDiv.classList.remove("animatedMovement");
+    }
+    backgroundDiv.style.left = x + "px";
+    backgroundDiv.style.top = y + "px";
+    backgroundDiv.style.width  = object.width;
+    backgroundDiv.style.height = object.height;
+    backgroundDiv.style.zIndex = 0;
+    backgroundDiv.style.display = "block";
+    backgroundDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "1.0");
+  }
 }
 function renderExaminingObjects() {
   // sort by z order. bottom-to-top is left-to-right.
@@ -1491,6 +1516,9 @@ function getObjectDiv(id) {
 }
 function getStackHeightDiv(id) {
   return document.getElementById("stackHeight-" + id);
+}
+function getBackgroundDiv(id) {
+  return document.getElementById("background-" + id);
 }
 function setDivVisible(div, visible) {
   div.style.display = visible ? "block" : "none";
