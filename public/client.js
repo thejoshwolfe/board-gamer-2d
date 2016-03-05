@@ -443,7 +443,7 @@ document.addEventListener("mouseup", function(event) {
     for (var id in selectedObjectIdToNewProps) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
-      if (snapToSnapZones(newProps)) {
+      if (snapToSnapZones(object, newProps)) {
         render(object, true);
       }
     }
@@ -1050,8 +1050,8 @@ function render(object, isAnimated) {
   } else {
     for (var i = 0; i < hiderContainers.length; i++) {
       var hiderContainer = hiderContainers[i];
-      if (hiderContainer.x <= x && x + object.width  <= hiderContainer.x + hiderContainer.width &&
-          hiderContainer.y <= y && y + object.height <= hiderContainer.y + hiderContainer.height) {
+      if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
+          hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
         var hiderContainerDefinition = getObjectDefinition(hiderContainer.id);
         if (hiderContainerDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
           // blocked
@@ -1245,33 +1245,40 @@ function resizeTableToFitEverything() {
   tableDiv.style.height = maxY + "px";
 }
 
-function snapToSnapZones(newProps) {
+function snapToSnapZones(object, newProps) {
   objectsWithSnapZones.sort(compareZ);
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
-    var containerRelativeX = newProps.x - containerObject.x;
-    var containerRelativeY = newProps.y - containerObject.y;
     var containerObjectDefinition = getObjectDefinition(containerObject.id);
     for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
       var snapZoneDefinition = containerObjectDefinition.snapZones[j];
-      var snapZoneX      = snapZoneDefinition.x      != null ? snapZoneDefinition.x      : 0;
-      var snapZoneY      = snapZoneDefinition.y      != null ? snapZoneDefinition.y      : 0;
-      var snapZoneWidth  = snapZoneDefinition.width  != null ? snapZoneDefinition.width  : containerObjectDefinition.width;
-      var snapZoneHeight = snapZoneDefinition.height != null ? snapZoneDefinition.height : containerObjectDefinition.height;
-      var cellWidth  = snapZoneDefinition.cellWidth;
-      var cellHeight = snapZoneDefinition.cellHeight;
-      var snapZoneRelativeX = containerRelativeX - snapZoneX;
-      var snapZoneRelativeY = containerRelativeY - snapZoneY;
-      if (snapZoneRelativeX < -cellWidth  || snapZoneRelativeX > snapZoneWidth)  continue; // way out of bounds
-      if (snapZoneRelativeY < -cellHeight || snapZoneRelativeY > snapZoneHeight) continue; // way out of bounds
+      var snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
+      var snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
+      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObjectDefinition.width;
+      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObjectDefinition.height;
+      var cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
+      var cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
+      if (cellWidth  < object.width)  continue; // doesn't fit in the zone
+      if (cellHeight < object.height) continue; // doesn't fit in the zone
+      if (newProps.x >= containerObject.x + snapZoneX + snapZoneWidth)  continue; // way off right
+      if (newProps.y >= containerObject.y + snapZoneY + snapZoneHeight) continue; // way off bottom
+      if (newProps.x + object.width  <= containerObject.x + snapZoneX)  continue; // way off left
+      if (newProps.y + object.height <= containerObject.y + snapZoneY)  continue; // way off top
       // this is the zone for us
-      var roundedSnapZoneRelativeX = Math.round(snapZoneRelativeX / cellWidth)  * cellWidth;
-      var roundedSnapZoneRelativeY = Math.round(snapZoneRelativeY / cellHeight) * cellHeight;
-      var inBoundsX = 0 <= roundedSnapZoneRelativeX && roundedSnapZoneRelativeX < snapZoneWidth;
-      var inBoundsY = 0 <= roundedSnapZoneRelativeY && roundedSnapZoneRelativeY < snapZoneHeight;
+      var relativeCenterX = newProps.x + object.width /2 - (containerObject.x + snapZoneX);
+      var relativeCenterY = newProps.y + object.height/2 - (containerObject.y + snapZoneY);
+      var modX = euclideanMod(relativeCenterX, cellWidth);
+      var modY = euclideanMod(relativeCenterY, cellHeight);
+      var divX = Math.floor(relativeCenterX / cellWidth);
+      var divY = Math.floor(relativeCenterY / cellHeight);
+      var newModX = clamp(modX, object.width /2, cellWidth  - object.width /2);
+      var newModY = clamp(modY, object.height/2, cellHeight - object.height/2);
+
+      var inBoundsX = 0 <= relativeCenterX && relativeCenterX < snapZoneWidth;
+      var inBoundsY = 0 <= relativeCenterY && relativeCenterY < snapZoneHeight;
       if (!inBoundsX && !inBoundsY) {
         // on an outside corner. we need to pick an edge to rub.
-        if (Math.abs(roundedSnapZoneRelativeX - snapZoneRelativeX) > Math.abs(roundedSnapZoneRelativeY - snapZoneRelativeY)) {
+        if (Math.abs(modX - newModX) > Math.abs(modY - newModY)) {
           // x is further off
           inBoundsX = true;
         } else {
@@ -1279,13 +1286,9 @@ function snapToSnapZones(newProps) {
           inBoundsY = true;
         }
       }
-      if (inBoundsY) {
-        newProps.x = roundedSnapZoneRelativeX + snapZoneX + containerObject.x;
-      }
-      if (inBoundsX) {
-        newProps.y = roundedSnapZoneRelativeY + snapZoneY + containerObject.y;
-      }
-      return inBoundsX || inBoundsY;
+      if (inBoundsY) newProps.x = divX * cellWidth  + newModX - object.width /2 + containerObject.x + snapZoneX;
+      if (inBoundsX) newProps.y = divY * cellHeight + newModY - object.height/2 + containerObject.y + snapZoneY;
+      return true;
     }
   }
   return false;
@@ -1495,6 +1498,14 @@ function setDivVisible(div, visible) {
 
 function sanitizeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+function euclideanMod(numerator, denominator) {
+  return (numerator % denominator + denominator) % denominator;
+}
+function clamp(n, min, max) {
+  if (n < min) return min;
+  if (n > max) return max;
+  return n;
 }
 
 setScreenMode(SCREEN_MODE_LOGIN);
