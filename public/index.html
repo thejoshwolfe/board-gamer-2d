@@ -53,6 +53,14 @@
         background-color: rgba(224,224,224,0.5);
         font-size: 20pt; font-family: monospace; font-weight: bold;
       }
+      #editUserDiv {
+        position: fixed;
+        left: 50%; top: 50%;
+        transform: translate(-50%, -50%);
+        padding: 0.2em;
+        background-color: #ccf;
+        font-size: 20pt; font-family: monospace; font-weight: bold;
+      }
       .gameObject {
         position: absolute;
         background-size: 100% 100%;
@@ -98,6 +106,16 @@
       #myUserNameLi:hover {
         text-decoration: underline;
       }
+      #modalMaskDiv {
+        position: fixed;
+        display: block;
+        top: 0px;
+        left: 0px;
+        width: 100%;
+        height: 100%;
+        background: #fff;
+        opacity: 0.8;
+      }
     </style>
   </head>
   <body>
@@ -126,6 +144,14 @@
         <ul id="userListUl"></ul>
       </div>
       <div id="numberBufferDiv" style="display: none;"></div>
+      <div id="editUserDiv" style="display: none;">
+        <p>
+          <label>Name: <input id="yourNameTextbox" placeholder="Your name" maxlength=16></label>
+          <input id="submitYourNameButton" type="button" value="Submit">
+        </p>
+        <p><label>Role: <select id="yourRoleDropdown"></select></label></p>
+        <p style="text-align: right;"><input id="closeEditUserButton" type="button" value="Close"></p>
+      </div>
     </div>
     <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt;">
       <p><input id="createRoomButton" type="button" class="largeTextButon" value="Create a Room"></p>
@@ -138,6 +164,7 @@
     <div id="loadingDiv">
       <p id="loadingMessageDiv">Please wait...</p>
     </div>
+    <div id="modalMaskDiv" style="display: none;"></div>
     <script src="client.js"></script>
   </body>
 </head>

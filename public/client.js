@@ -106,7 +106,7 @@ function initGame(game, history) {
       id: id,
       x: objectDefinition.x,
       y: objectDefinition.y,
-      z: objectDefinition.z || 0,
+      z: objectDefinition.z || i,
       width:  objectDefinition.width,
       height: objectDefinition.height,
       faces: objectDefinition.faces,
@@ -225,6 +225,7 @@ function getIdFromIndex(i) {
 }
 
 function deleteTableAndEverything() {
+  closeDialog();
   tableDiv.innerHTML = "";
   gameDefinition = null;
   objectDefinitionsById = null;
@@ -247,9 +248,12 @@ function findMaxZ(excludingSelection) {
 }
 function fixFloatingThingZ() {
   renderExaminingObjects();
-  var maxZ = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
-  document.getElementById("roomInfoDiv").style.zIndex = maxZ + 1;
-  document.getElementById("helpDiv").style.zIndex = maxZ + 2;
+  var z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
+  z++;
+  document.getElementById("roomInfoDiv").style.zIndex = z++;
+  document.getElementById("helpDiv").style.zIndex = z++;
+  modalMaskDiv.style.zIndex = z++;
+  editUserDiv.style.zIndex = z++;
 }
 
 var DRAG_NONE = 0;
@@ -554,6 +558,10 @@ function getModifierMask(event) {
   );
 }
 document.addEventListener("keydown", function(event) {
+  if (dialogIsOpen) {
+    if (event.keyCode === 27) closeDialog();
+    return;
+  }
   var modifierMask = getModifierMask(event);
   switch (event.keyCode) {
     case "R".charCodeAt(0):
@@ -896,24 +904,110 @@ function renderUserList() {
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
     return (
-      '<li'+(userId === myUser.id ? ' id="myUserNameLi"' : '')+' title="Click to edit your name">' +
+      '<li'+(userId === myUser.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
         sanitizeHtml(usersById[userId].userName) +
       '</li>');
   }).join("");
 
-  document.getElementById("myUserNameLi").addEventListener("click", function() {
-    var newName = prompt("New name (max length 16 characters):");
-    if (!newName) return;
+  getObjects().forEach(function(object) {
+    var objectDefinition = getObjectDefinition(object.id);
+    if (objectDefinition.labelPlayerName == null) return;
+    var userName = null;
+    if (objectDefinition.labelPlayerName === myUser.role) {
+      userName = "You";
+    } else {
+      for (var i = 0; i < userIds.length; i++) {
+        if (usersById[userIds[i]].role === objectDefinition.labelPlayerName) {
+          userName = usersById[userIds[i]].userName;
+          break;
+        }
+      }
+    }
+    var roleName = null;
+    for (var i = 0; i < gameDefinition.roles.length; i++) {
+      if (gameDefinition.roles[i].id === objectDefinition.labelPlayerName) {
+        roleName = gameDefinition.roles[i].name;
+        break;
+      }
+    }
+    var labelText;
+    if (userName != null) {
+      labelText = userName + " ("+roleName+")";
+    } else {
+      labelText = roleName;
+    }
+    var stackHeightDiv = getStackHeightDiv(object.id);
+    stackHeightDiv.textContent = labelText;
+    stackHeightDiv.style.display = "block";
+  });
+  document.getElementById("myUserNameLi").addEventListener("click", showEditUserDialog);
+}
+var dialogIsOpen = false;
+var modalMaskDiv = document.getElementById("modalMaskDiv");
+modalMaskDiv.addEventListener("mousedown", closeDialog);
+var editUserDiv = document.getElementById("editUserDiv");
+function showEditUserDialog() {
+  modalMaskDiv.style.display = "block";
+  editUserDiv.style.display = "block";
+
+  yourNameTextbox.value = myUser.userName;
+  yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition.roles.map(function(role) {
+    return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
+  }).join("");
+  yourRoleDropdown.value = myUser.role;
+
+  dialogIsOpen = true;
+  yourNameTextbox.focus();
+  yourNameTextbox.select();
+}
+function closeDialog() {
+  modalMaskDiv.style.display = "none";
+  editUserDiv.style.display = "none";
+  if (document.activeElement != null) {
+    document.activeElement.blur();
+  }
+  dialogIsOpen = false;
+}
+var yourNameTextbox = document.getElementById("yourNameTextbox");
+yourNameTextbox.addEventListener("keydown", function(event) {
+  event.stopPropagation();
+  if (event.keyCode === 13) {
+    setTimeout(function() {
+      submitYourName();
+      closeDialog();
+    }, 0);
+  } else if (event.keyCode === 27) {
+    setTimeout(closeDialog, 0);
+  }
+});
+var submitYourNameButton = document.getElementById("submitYourNameButton");
+submitYourNameButton.addEventListener("click", submitYourName);
+function submitYourName() {
+  var newName = yourNameTextbox.value;
+  if (newName && newName !== myUser.userName) {
     sendMessage({
       cmd: "changeMyName",
       args: newName,
     });
-    if (newName.length > 16) newName = newName.substring(0, 16);
     // anticipate
     myUser.userName = newName;
     renderUserList();
-  });
+  }
 }
+var yourRoleDropdown = document.getElementById("yourRoleDropdown");
+yourRoleDropdown.addEventListener("change", function() {
+  setTimeout(function() {
+    var role = yourRoleDropdown.value;
+    sendMessage({
+      cmd: "changeMyRole",
+      args: role,
+    });
+    // anticipate
+    myUser.role = role;
+    renderUserList();
+  }, 0);
+});
+document.getElementById("closeEditUserButton").addEventListener("click", closeDialog);
 
 function render(object, isAnimated) {
   if (object.id in examiningObjectsById) return; // different handling for this
@@ -1020,6 +1114,11 @@ function renderOrder() {
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
+    var objectDefinition = getObjectDefinition(object.id);
+    if (objectDefinition.labelPlayerName != null) {
+      // not really a stack height
+      return;
+    }
     var key = getStackId(newProps, object);
     var idAndZList = sizeAndLocationToIdAndZList[key];
     if (idAndZList == null) idAndZList = sizeAndLocationToIdAndZList[key] = [];
@@ -1229,6 +1328,7 @@ function connectToServer() {
           myUser = {
             id: message.args.userId,
             userName: message.args.userName,
+            role: message.args.role,
           };
           usersById[myUser.id] = myUser;
           message.args.users.forEach(function(otherUser) {
@@ -1245,6 +1345,7 @@ function connectToServer() {
           usersById[message.args.id] = {
             id: message.args.id,
             userName: message.args.userName,
+            role: message.args.role,
           };
           renderUserList();
         } else if (message.cmd === "userLeft") {
@@ -1252,6 +1353,9 @@ function connectToServer() {
           renderUserList();
         } else if (message.cmd === "changeMyName") {
           usersById[message.args.id].userName = message.args.userName;
+          renderUserList();
+        } else if (message.cmd === "changeMyRole") {
+          usersById[message.args.id].role = message.args.role;
           renderUserList();
         }
         break;
