@@ -104,37 +104,9 @@ function initGame(game, history) {
 
     var objectDefinition = getObjectDefinition(id);
     if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
-    var object = {
-      id: id,
-      x: objectDefinition.x,
-      y: objectDefinition.y,
-      z: objectDefinition.z || i,
-      width:  objectDefinition.width,
-      height: objectDefinition.height,
-      faces: objectDefinition.faces,
-      snapZones: objectDefinition.snapZones || [],
-      locked: !!objectDefinition.locked,
-      faceIndex: 0,
-    };
-    objectsById[id] = object;
-    if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
-    if (objectDefinition.visionWhitelist != null) hiderContainers.push(object);
-
-    tableDiv.insertAdjacentHTML("beforeend",
-      '<div id="object-'+id+'" data-id="'+id+'" class="gameObject" style="display:none;">' +
-        '<div id="stackHeight-'+id+'" class="stackHeight" style="display:none;"></div>' +
-      '</div>'
-    );
-    var objectDiv = getObjectDiv(object.id);
-    objectDiv.addEventListener("mousedown", onObjectMouseDown);
-    objectDiv.addEventListener("mousemove", onObjectMouseMove);
-    objectDiv.addEventListener("mouseout",  onObjectMouseOut);
-    if (objectDefinition.backgroundColor != null) {
-      // add a background div
-      tableDiv.insertAdjacentHTML("beforeend",
-        '<div id="background-'+id+'" class="backgroundObject" style="display:none;"></div>'
-      );
-    }
+    var object = makeObject(id, objectDefinition);
+    if (object.z == null) object.z = i;
+    registerObject(object);
   }
   // reassign all the z's to be unique
   var objects = getObjects();
@@ -229,6 +201,49 @@ function checkForDoneLoading() {
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
+function makeObject(id, objectDefinition) {
+  return {
+    id: id,
+    temporary: false,
+    x: objectDefinition.x,
+    y: objectDefinition.y,
+    z: objectDefinition.z,
+    width:  objectDefinition.width  || error(),
+    height: objectDefinition.height || error(),
+    faces: objectDefinition.faces,
+    snapZones: objectDefinition.snapZones,
+    locked: !!objectDefinition.locked,
+    faceIndex: 0,
+    visionWhitelist: objectDefinition.visionWhitelist,
+    hideFaces: objectDefinition.hideFaces,
+    backgroundColor: objectDefinition.backgroundColor,
+    labelPlayerName: objectDefinition.labelPlayerName,
+  };
+  function error() {
+    throw new Error();
+  }
+}
+function registerObject(object) {
+  objectsById[object.id] = object;
+  if (object.snapZones != null) objectsWithSnapZones.push(object);
+  if (object.visionWhitelist != null) hiderContainers.push(object);
+
+  tableDiv.insertAdjacentHTML("beforeend",
+    '<div id="object-'+object.id+'" data-id="'+object.id+'" class="gameObject" style="display:none;">' +
+      '<div id="stackHeight-'+object.id+'" class="stackHeight" style="display:none;"></div>' +
+    '</div>'
+  );
+  var objectDiv = getObjectDiv(object.id);
+  objectDiv.addEventListener("mousedown", onObjectMouseDown);
+  objectDiv.addEventListener("mousemove", onObjectMouseMove);
+  objectDiv.addEventListener("mouseout",  onObjectMouseOut);
+  if (object.backgroundColor != null) {
+    // add a background div
+    tableDiv.insertAdjacentHTML("beforeend",
+      '<div id="background-'+object.id+'" class="backgroundObject" style="display:none;"></div>'
+    );
+  }
+}
 function autogenerateId(i) {
   return "object-" + i;
 }
@@ -265,9 +280,8 @@ function fixFloatingThingZ() {
   var z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
   hiderContainers.forEach(function(object) {
-    var objectDefinition = getObjectDefinition(object.id);
     var objectDiv = getObjectDiv(object.id);
-    if (objectDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+    if (object.visionWhitelist.indexOf(myUser.role) === -1) {
       // blocked
       objectDiv.style.zIndex = z++;
     } else {
@@ -277,6 +291,7 @@ function fixFloatingThingZ() {
   });
   document.getElementById("roomInfoDiv").style.zIndex = z++;
   document.getElementById("helpDiv").style.zIndex = z++;
+  document.getElementById("closetDiv").style.zIndex = z++;
   modalMaskDiv.style.zIndex = z++;
   editUserDiv.style.zIndex = z++;
 }
@@ -299,6 +314,7 @@ var examiningMode = EXAMINE_NONE;
 var examiningObjectsById = {};
 
 var hoverObject;
+var hoverDiv;
 var lastMouseDragX;
 var lastMouseDragY;
 
@@ -340,20 +356,7 @@ function onObjectMouseDown(event) {
   lastMouseDragY = eventToMouseY(event, tableDiv);
   if (isGKeyDown) startAccordion();
 
-  // bring selection to top
-  // effectively do a stable sort.
-  var selection = selectedObjectIdToNewProps;
-  var newPropses = [];
-  for (var id in selection) {
-    newPropses.push(selection[id]);
-  }
-  newPropses.sort(compareZ);
-  var z = findMaxZ(selection);
-  newPropses.forEach(function(newProps, i) {
-    newProps.z = z + i + 1;
-  });
-  renderAndMaybeCommitSelection(selection);
-  fixFloatingThingZ();
+  bringSelectionToTop();
 }
 function onObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
@@ -368,6 +371,23 @@ function onObjectMouseOut(event) {
   if (hoverObject === object) {
     setHoverObject(null);
   }
+}
+
+function bringSelectionToTop() {
+  // bring selection to top
+  // effectively do a stable sort.
+  var selection = selectedObjectIdToNewProps;
+  var newPropses = [];
+  for (var id in selection) {
+    newPropses.push(selection[id]);
+  }
+  newPropses.sort(compareZ);
+  var z = findMaxZ(selection);
+  newPropses.forEach(function(newProps, i) {
+    newProps.z = z + i + 1;
+  });
+  renderAndMaybeCommitSelection(selection);
+  fixFloatingThingZ();
 }
 
 tableDiv.addEventListener("mousedown", function(event) {
@@ -445,6 +465,7 @@ document.addEventListener("mouseup", function(event) {
     renderSelectionRectangle();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
+    // TODO
     // snap everything really quick
     for (var id in selectedObjectIdToNewProps) {
       var object = objectsById[id];
@@ -461,13 +482,14 @@ document.addEventListener("mouseup", function(event) {
 
 function setHoverObject(object) {
   if (hoverObject == object) return;
-  if (hoverObject != null) {
-    getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
-  }
   hoverObject = object;
-  if (hoverObject != null) {
-    getObjectDiv(hoverObject.id).classList.add("hoverSelect");
-  }
+  setHoverDiv(hoverObject != null ? getObjectDiv(hoverObject.id) : null);
+}
+function setHoverDiv(div) {
+  if (hoverDiv == div) return;
+  if (hoverDiv != null) hoverDiv.classList.remove("hoverSelect");
+  hoverDiv = div;
+  if (hoverDiv != null) hoverDiv.classList.add("hoverSelect");
 }
 function setSelectedObjects(objects) {
   for (var id in selectedObjectIdToNewProps) {
@@ -865,6 +887,7 @@ function renderHelp() {
 }
 
 var closetObjects = null;
+var closetObjectsById = null;
 var showCloset = false;
 
 var closetShowHideButton = document.getElementById("closetShowHideButton");
@@ -884,8 +907,13 @@ closetShowHideButton.addEventListener("click", function(event) {
     closetObjects = "loading";
     httpGet("closet.json", function(result) {
       closetObjects = JSON.parse(result);
+      closetObjectsById = {};
+      closetObjects.forEach(function(object) {
+        closetObjectsById[object.id] = object;
+      });
       if (showCloset) renderCloset();
     });
+    closetUl.innerHTML = "<li>Loading...</li>";
     return;
   } else if (closetObjects === "loading") {
     // 3 clicks before the server responded with that json
@@ -895,12 +923,71 @@ closetShowHideButton.addEventListener("click", function(event) {
 });
 function renderCloset() {
   closetUl.innerHTML = closetObjects.map(function(closetObject) {
-    var thumbnailPath   = closetObject.thumbnail       || closetObject.faces[0];
-    var thumbnailWidth  = closetObject.thumbnailWidth  || 25;
-    var thumbnailHeight = closetObject.thumbnailHeight || 25;
-    var closetName      = closetObject.closetName;
-    return '<li><img src="'+thumbnailPath+'" width='+thumbnailWidth+' height='+thumbnailHeight+'>'+closetName+'</li>';
+    var id        = closetObject.id;
+    var name      = closetObject.closetName;
+    var thumbnail = closetObject.thumbnail       || closetObject.faces[0];
+    var width     = closetObject.thumbnailWidth  || 25;
+    var height    = closetObject.thumbnailHeight || 25;
+    return '<li data-id="'+id+'"><img src="'+thumbnail+'" width='+width+' height='+height+'>'+name+'</li>';
   }).join("");
+  var fakeArray = closetUl.getElementsByTagName("li");
+  for (var i = 0; i < fakeArray.length; i++) {
+    var li = fakeArray[i];
+    li.addEventListener("mousedown", onClosetObjectMouseDown);
+    li.addEventListener("mousemove", onClosetObjectMouseMove);
+    li.addEventListener("mouseout",  onClosetObjectMouseOut);
+  }
+}
+function onClosetObjectMouseDown(event) {
+  if (event.button !== 0) return;
+  if (examiningMode !== EXAMINE_NONE) return;
+  event.preventDefault();
+  event.stopPropagation();
+  var x = 400; // TODO
+  var y = 400; // TODO
+  var closetObject = closetObjectsById[this.dataset.id];
+
+  // create temporary objects
+  var numberModifier = consumeNumberModifier();
+  if (numberModifier == null) numberModifier = 1;
+  var stackOfObjects = [];
+  var z = findMaxZ();
+  z++;
+  for (var i = 0; i < numberModifier; i++) {
+    stackOfObjects.push(makeTemporaryObject(closetObject, x, y, z++));
+  }
+  setSelectedObjects(stackOfObjects);
+
+  // begin drag
+  draggingMode = DRAG_MOVE_SELECTION;
+  lastMouseDragX = eventToMouseX(event, tableDiv);
+  lastMouseDragY = eventToMouseY(event, tableDiv);
+
+  // bring selection to top
+  bringSelectionToTop();
+}
+function onClosetObjectMouseMove(event) {
+  if (draggingMode != DRAG_NONE) return;
+  var closetObject = closetObjectsById[this.dataset.id];
+  setHoverDiv(this);
+}
+function onClosetObjectMouseOut(event) {
+  if (hoverDiv === this) {
+    setHoverDiv(null);
+  }
+}
+
+function makeTemporaryObject(rawDefinition, x, y, z) {
+  var id = generateRandomId();
+  objectDefinitionsById[id] = rawDefinition;
+  var objectDefinition = getObjectDefinition(id);
+  var object = makeObject(id, objectDefinition);
+  object.temporary = true;
+  object.x = x;
+  object.y = y;
+  object.z = z;
+  registerObject(object);
+  return object;
 }
 
 function undo() { undoOrRedo(changeHistory, futureChanges); }
@@ -974,14 +1061,13 @@ function renderUserList() {
   }).join("");
 
   getObjects().forEach(function(object) {
-    var objectDefinition = getObjectDefinition(object.id);
-    if (objectDefinition.labelPlayerName == null) return;
+    if (object.labelPlayerName == null) return;
     var userName = null;
-    if (objectDefinition.labelPlayerName === myUser.role) {
+    if (object.labelPlayerName === myUser.role) {
       userName = "You";
     } else {
       for (var i = 0; i < userIds.length; i++) {
-        if (usersById[userIds[i]].role === objectDefinition.labelPlayerName) {
+        if (usersById[userIds[i]].role === object.labelPlayerName) {
           userName = usersById[userIds[i]].userName;
           break;
         }
@@ -989,7 +1075,7 @@ function renderUserList() {
     }
     var roleName = null;
     for (var i = 0; i < gameDefinition.roles.length; i++) {
-      if (gameDefinition.roles[i].id === objectDefinition.labelPlayerName) {
+      if (gameDefinition.roles[i].id === object.labelPlayerName) {
         roleName = gameDefinition.roles[i].name;
         break;
       }
@@ -1078,7 +1164,6 @@ document.getElementById("closeEditUserButton").addEventListener("click", closeDi
 
 function render(object, isAnimated) {
   if (object.id in examiningObjectsById) return; // different handling for this
-  var objectDefinition = getObjectDefinition(object.id);
   var x = object.x;
   var y = object.y;
   var z = object.z;
@@ -1090,17 +1175,16 @@ function render(object, isAnimated) {
     z = newProps.z;
     faceIndex = newProps.faceIndex;
   }
-  if (objectDefinition.locked) {
+  if (object.locked) {
     z = 0;
   } else {
     for (var i = 0; i < hiderContainers.length; i++) {
       var hiderContainer = hiderContainers[i];
       if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
-        var hiderContainerDefinition = getObjectDefinition(hiderContainer.id);
-        if (hiderContainerDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+        if (hiderContainer.visionWhitelist.indexOf(myUser.role) === -1) {
           // blocked
-          var forbiddenFaces = hiderContainerDefinition.hideFaces.map(resolveFace);
+          var forbiddenFaces = hiderContainer.hideFaces.map(resolveFace);
           var betterFaceIndex = -1;
           for (var j = 0; j < object.faces.length; j++) {
             var tryThisIndex = (faceIndex + j) % object.faces.length;
@@ -1133,8 +1217,8 @@ function render(object, isAnimated) {
       objectDiv.dataset.facePath = facePath;
       objectDiv.style.backgroundImage = imageUrlUrl;
     }
-  } else if (objectDefinition.backgroundColor != null) {
-    objectDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "0.4");
+  } else if (object.backgroundColor != null) {
+    objectDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
     objectDiv.style.borderStyle = "solid";
@@ -1147,7 +1231,7 @@ function render(object, isAnimated) {
   }
   objectDiv.style.display = "block";
 
-  if (objectDefinition.backgroundColor != null) {
+  if (object.backgroundColor != null) {
     var backgroundDiv = getBackgroundDiv(object.id);
     if (isAnimated) {
       backgroundDiv.classList.add("animatedMovement");
@@ -1160,7 +1244,7 @@ function render(object, isAnimated) {
     backgroundDiv.style.height = object.height;
     backgroundDiv.style.zIndex = 0;
     backgroundDiv.style.display = "block";
-    backgroundDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "1.0");
+    backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "1.0");
   }
 }
 function renderExaminingObjects() {
@@ -1223,8 +1307,7 @@ function renderOrder() {
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
-    var objectDefinition = getObjectDefinition(object.id);
-    if (objectDefinition.labelPlayerName != null) {
+    if (object.labelPlayerName != null) {
       // not really a stack height
       return;
     }
@@ -1313,13 +1396,12 @@ function snapToSnapZones(object, newProps) {
   objectsWithSnapZones.sort(compareZ);
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
-    var containerObjectDefinition = getObjectDefinition(containerObject.id);
-    for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
-      var snapZoneDefinition = containerObjectDefinition.snapZones[j];
+    for (var j = 0; j < containerObject.snapZones.length; j++) {
+      var snapZoneDefinition = containerObject.snapZones[j];
       var snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
       var snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
-      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObjectDefinition.width;
-      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObjectDefinition.height;
+      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObject.width;
+      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObject.height;
       var cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
       var cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
       if (cellWidth  < object.width)  continue; // doesn't fit in the zone

@@ -2,7 +2,6 @@
   {
     "id": "d6",
     "closetName": "D6 die",
-    "prototype": true,
     "width": 25,
     "height": 25,
     "thumbnail": "dice/d6_6.png",
