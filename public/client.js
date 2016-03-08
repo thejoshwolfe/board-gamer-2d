@@ -79,7 +79,6 @@ var facePathToUrlUrl = {
 
 var gameDefinition;
 var objectDefinitionsById;
-var objectIndexesById;
 var objectsById;
 var objectsWithSnapZones; // cache
 var hiderContainers; // cache
@@ -88,7 +87,6 @@ var futureChanges;
 function initGame(game, history) {
   gameDefinition = game;
   objectDefinitionsById = {};
-  objectIndexesById = {};
   objectsById = {};
   objectsWithSnapZones = [];
   hiderContainers = [];
@@ -99,7 +97,6 @@ function initGame(game, history) {
     var id = rawDefinition.id;
     if (id == null) id = autogenerateId(i);
     objectDefinitionsById[id] = rawDefinition;
-    objectIndexesById[id] = i;
     if (rawDefinition.prototype) continue;
 
     var objectDefinition = getObjectDefinition(id);
@@ -244,13 +241,22 @@ function registerObject(object) {
     );
   }
 }
+function deleteObject(id) {
+  if (hoverObject === objectsById[id]) hoverObject = null;
+  delete objectsById[id];
+  delete objectsWithSnapZones[id];
+  delete hiderContainers[id];
+  deleteDiv(getObjectDiv(id));
+  var backgroundDiv = getBackgroundDiv(id);
+  if (backgroundDiv != null) deleteDiv(backgroundDiv);
+}
+function deleteDiv(div) {
+  if (hoverDiv === div) hoverDiv = null;
+  tableDiv.removeChild(div);
+}
+
 function autogenerateId(i) {
   return "object-" + i;
-}
-function getIdFromIndex(i) {
-  var id = gameDefinition.objects[i].id;
-  if (id == null) id = autogenerateId(i);
-  return id;
 }
 
 function deleteTableAndEverything() {
@@ -258,7 +264,6 @@ function deleteTableAndEverything() {
   tableDiv.innerHTML = "";
   gameDefinition = null;
   objectDefinitionsById = null;
-  objectIndexesById = null;
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
@@ -465,16 +470,28 @@ document.addEventListener("mouseup", function(event) {
     renderSelectionRectangle();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
-    // TODO
-    // snap everything really quick
+    // snap to grid
+    var newObjects = [];
     for (var id in selectedObjectIdToNewProps) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
       if (snapToSnapZones(object, newProps)) {
         render(object, true);
       }
+      if (object.temporary) {
+        newObjects.push(object);
+        object.temporary = false;
+      }
     }
-    commitSelection(selectedObjectIdToNewProps);
+    if (newObjects.length > 0) {
+      // TODO: update actual object props
+      sendMessage({
+        cmd: "createObjects",
+        args: newObjects,
+      });
+    } else {
+      commitSelection(selectedObjectIdToNewProps);
+    }
     resizeTableToFitEverything();
     renderOrder();
   }
@@ -569,7 +586,7 @@ function commitSelection(selection) {
           object.z === newProps.z &&
           object.faceIndex === newProps.faceIndex)) {
       move.push(
-        objectIndexesById[object.id],
+        object.id,
         object.x,
         object.y,
         object.z,
@@ -706,12 +723,16 @@ function cancelMove() {
   var selection = selectedObjectIdToNewProps;
   for (var id in selection) {
     var object = objectsById[id];
-    var newProps = selection[id];
-    newProps.x = object.x;
-    newProps.y = object.y;
-    newProps.z = object.z;
-    newProps.faceIndex = object.faceIndex;
-    render(object, true);
+    if (object.temporary) {
+      deleteObject(id);
+    } else {
+      var newProps = selection[id];
+      newProps.x = object.x;
+      newProps.y = object.y;
+      newProps.z = object.z;
+      newProps.faceIndex = object.faceIndex;
+      render(object, true);
+    }
   }
   draggingMode = DRAG_NONE;
   renderOrder();
@@ -1004,7 +1025,7 @@ function reverseChange(move) {
   var i = 0;
   move[i++]; // userId
   while (i < move.length) {
-    var object = objectsById[getIdFromIndex(move[i++])];
+    var object = objectsById[move[i++]];
     var fromX         =      move[i++];
     var fromY         =      move[i++];
     var fromZ         =      move[i++];
@@ -1025,7 +1046,7 @@ function reverseChange(move) {
       newProps.faceIndex = object.faceIndex;
     }
     newMove.push(
-      objectIndexesById[object.id],
+      object.id,
       toX,
       toY,
       toZ,
@@ -1535,6 +1556,8 @@ function connectToServer() {
       case SCREEN_MODE_PLAY:
         if (message.cmd === "makeAMove") {
           makeAMove(message.args, true);
+        } else if (message.cmd === "createObjects") {
+          todo();
         } else if (message.cmd === "userJoined") {
           usersById[message.args.id] = {
             id: message.args.id,
@@ -1589,7 +1612,7 @@ function makeAMove(move, shouldRender) {
   var userId = move[i++];
   if (userId === myUser.id) return;
   while (i < move.length) {
-    var object = objectsById[getIdFromIndex(move[i++])];
+    var object = objectsById[move[i++]];
     var fromX         =      move[i++];
     var fromY         =      move[i++];
     var fromZ         =      move[i++];
@@ -1655,6 +1678,11 @@ function clamp(n, min, max) {
   if (n < min) return min;
   if (n > max) return max;
   return n;
+}
+
+function undefineNull(key, value) {
+  if (value == null) return undefined;
+  return value;
 }
 
 function httpGet(url, cb) {
