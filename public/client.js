@@ -1034,8 +1034,8 @@ function onClosetObjectMouseDown(event) {
   if (examiningMode !== EXAMINE_NONE) return;
   event.preventDefault();
   event.stopPropagation();
-  var x = 400; // TODO
-  var y = 400; // TODO
+  var x = this.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
+  var y = this.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
   var closetObject = closetObjectsById[this.dataset.id];
 
   // create temporary objects
@@ -1133,7 +1133,7 @@ function reverseChange(move) {
           newProps.z         = object.z;
           newProps.faceIndex = object.faceIndex;
         }
-        newMove.push(
+        newMove.push("m", // move
           object.id,
           toX,
           toY,
