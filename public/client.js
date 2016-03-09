@@ -246,6 +246,7 @@ function deleteObject(id) {
   delete objectsById[id];
   delete objectsWithSnapZones[id];
   delete hiderContainers[id];
+  delete selectedObjectIdToNewProps[id];
   deleteDiv(getObjectDiv(id));
   var backgroundDiv = getBackgroundDiv(id);
   if (backgroundDiv != null) deleteDiv(backgroundDiv);
@@ -656,6 +657,9 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0 && draggingMode === DRAG_MOVE_SELECTION) { cancelMove(); break; }
       if (modifierMask === 0 && draggingMode === DRAG_NONE)           { setSelectedObjects([]); break; }
       return;
+    case 46: // Delete
+      if (modifierMask === 0) { deleteSelection(); break; }
+      return;
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
       if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
@@ -746,6 +750,39 @@ function cancelMove() {
     }
   }
   draggingMode = DRAG_NONE;
+  renderOrder();
+  resizeTableToFitEverything();
+  fixFloatingThingZ();
+}
+function deleteSelection() {
+  var selection = getEffectiveSelection();
+  var objects = [];
+  for (var id in selection) {
+    objects.push(objectsById[id]);
+  }
+  var partialDeletion = false;
+  var numberModifier = consumeNumberModifier();
+  if (numberModifier != null && numberModifier < objects.length) {
+    // only delete the top N objects
+    objects.sort(compareZ);
+    objects.splice(0, objects.length - numberModifier);
+    partialDeletion = true;
+  }
+
+  var move = [];
+  objects.forEach(function(object) {
+    if (!object.temporary) {
+      move.push("d", // delete
+        object.id);
+    }
+    deleteObject(object.id);
+  });
+  if (move.length > 0) {
+    move.unshift(myUser.id);
+    sendMessage({cmd:"makeAMove", args:move});
+  }
+
+  if (draggingMode === DRAG_MOVE_SELECTION && !partialDeletion) draggingMode = DRAG_NONE;
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
@@ -1039,6 +1076,9 @@ function reverseChange(move) {
     var actionCode = move[i++];
     switch (actionCode) {
       case "c": // create
+        todo();
+        break;
+      case "d": // delete
         todo();
         break;
       case "m": // move
@@ -1651,6 +1691,10 @@ function makeAMove(move, shouldRender) {
           labelPlayerName: move[i++],
         };
         registerObject(object);
+        if (shouldRender) objectsToRender.push(object);
+        break;
+      case "d":
+        deleteObject(move[i++]);
         break;
       case "m": // move
         object = objectsById[move[i++]];
@@ -1673,10 +1717,10 @@ function makeAMove(move, shouldRender) {
           newProps.z = toZ;
           newProps.faceIndex = toFaceIndex;
         }
+        if (shouldRender) objectsToRender.push(object);
         break;
       default: throw asdf();
     }
-    if (shouldRender) objectsToRender.push(object);
   }
 
   if (shouldRender) {
