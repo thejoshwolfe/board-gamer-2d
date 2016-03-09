@@ -205,16 +205,16 @@ function makeObject(id, objectDefinition) {
     x: objectDefinition.x,
     y: objectDefinition.y,
     z: objectDefinition.z,
+    faceIndex: 0,
     width:  objectDefinition.width  || error(),
     height: objectDefinition.height || error(),
-    faces: objectDefinition.faces,
-    snapZones: objectDefinition.snapZones,
+    faces: objectDefinition.faces || [],
+    snapZones: objectDefinition.snapZones || [],
     locked: !!objectDefinition.locked,
-    faceIndex: 0,
-    visionWhitelist: objectDefinition.visionWhitelist,
-    hideFaces: objectDefinition.hideFaces,
-    backgroundColor: objectDefinition.backgroundColor,
-    labelPlayerName: objectDefinition.labelPlayerName,
+    visionWhitelist: objectDefinition.visionWhitelist || [],
+    hideFaces: objectDefinition.hideFaces || [],
+    backgroundColor: objectDefinition.backgroundColor || "",
+    labelPlayerName: objectDefinition.labelPlayerName || "",
   };
   function error() {
     throw new Error();
@@ -222,8 +222,8 @@ function makeObject(id, objectDefinition) {
 }
 function registerObject(object) {
   objectsById[object.id] = object;
-  if (object.snapZones != null) objectsWithSnapZones.push(object);
-  if (object.visionWhitelist != null) hiderContainers.push(object);
+  if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
+  if (object.visionWhitelist.length > 0) hiderContainers.push(object);
 
   tableDiv.insertAdjacentHTML("beforeend",
     '<div id="object-'+object.id+'" data-id="'+object.id+'" class="gameObject" style="display:none;">' +
@@ -234,7 +234,7 @@ function registerObject(object) {
   objectDiv.addEventListener("mousedown", onObjectMouseDown);
   objectDiv.addEventListener("mousemove", onObjectMouseMove);
   objectDiv.addEventListener("mouseout",  onObjectMouseOut);
-  if (object.backgroundColor != null) {
+  if (object.backgroundColor !== "") {
     // add a background div
     tableDiv.insertAdjacentHTML("beforeend",
       '<div id="background-'+object.id+'" class="backgroundObject" style="display:none;"></div>'
@@ -471,27 +471,14 @@ document.addEventListener("mouseup", function(event) {
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
     // snap to grid
-    var newObjects = [];
     for (var id in selectedObjectIdToNewProps) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
       if (snapToSnapZones(object, newProps)) {
         render(object, true);
       }
-      if (object.temporary) {
-        newObjects.push(object);
-        object.temporary = false;
-      }
     }
-    if (newObjects.length > 0) {
-      // TODO: update actual object props
-      sendMessage({
-        cmd: "createObjects",
-        args: newObjects,
-      });
-    } else {
-      commitSelection(selectedObjectIdToNewProps);
-    }
+    commitSelection(selectedObjectIdToNewProps);
     resizeTableToFitEverything();
     renderOrder();
   }
@@ -581,25 +568,49 @@ function commitSelection(selection) {
   for (var id in selection) {
     var object = objectsById[id];
     var newProps = selection[id];
-    if (!(object.x === newProps.x &&
-          object.y === newProps.y &&
-          object.z === newProps.z &&
-          object.faceIndex === newProps.faceIndex)) {
-      move.push(
-        object.id,
-        object.x,
-        object.y,
-        object.z,
-        object.faceIndex,
-        newProps.x,
-        newProps.y,
-        newProps.z,
-        newProps.faceIndex);
-      // anticipate
-      object.x = newProps.x;
-      object.y = newProps.y;
-      object.z = newProps.z;
-      object.faceIndex = newProps.faceIndex;
+    if (object.x         !== newProps.x         ||
+        object.y         !== newProps.y         ||
+        object.z         !== newProps.z         ||
+        object.faceIndex !== newProps.faceIndex ||
+        object.temporary) {
+      if (object.temporary) {
+        object.x = newProps.x;
+        object.y = newProps.y;
+        object.z = newProps.z;
+        object.faceIndex = newProps.faceIndex;
+        object.temporary = false;
+        move.push("c", // create
+          object.id,
+          object.x,
+          object.y,
+          object.z,
+          object.faceIndex,
+          object.width,
+          object.height,
+          object.faces,
+          object.snapZones,
+          object.locked,
+          object.visionWhitelist,
+          object.hideFaces,
+          object.backgroundColor,
+          object.labelPlayerName);
+      } else {
+        move.push("m", // move
+          object.id,
+          object.x,
+          object.y,
+          object.z,
+          object.faceIndex,
+          newProps.x,
+          newProps.y,
+          newProps.z,
+          newProps.faceIndex);
+        // anticipate
+        object.x = newProps.x;
+        object.y = newProps.y;
+        object.z = newProps.z;
+        object.faceIndex = newProps.faceIndex;
+      }
     }
   }
   if (move.length <= 1) return;
@@ -1025,37 +1036,46 @@ function reverseChange(move) {
   var i = 0;
   move[i++]; // userId
   while (i < move.length) {
-    var object = objectsById[move[i++]];
-    var fromX         =      move[i++];
-    var fromY         =      move[i++];
-    var fromZ         =      move[i++];
-    var fromFaceIndex =      move[i++];
-    var   toX         =      move[i++];
-    var   toY         =      move[i++];
-    var   toZ         =      move[i++];
-    var   toFaceIndex =      move[i++];
-    object.x         = fromX;
-    object.y         = fromY;
-    object.z         = fromZ;
-    object.faceIndex = fromFaceIndex;
-    var newProps = selectedObjectIdToNewProps[object.id];
-    if (newProps != null) {
-      newProps.x         = object.x;
-      newProps.y         = object.y;
-      newProps.z         = object.z;
-      newProps.faceIndex = object.faceIndex;
+    var actionCode = move[i++];
+    switch (actionCode) {
+      case "c": // create
+        todo();
+        break;
+      case "m": // move
+        var object = objectsById[move[i++]];
+        var fromX         =      move[i++];
+        var fromY         =      move[i++];
+        var fromZ         =      move[i++];
+        var fromFaceIndex =      move[i++];
+        var   toX         =      move[i++];
+        var   toY         =      move[i++];
+        var   toZ         =      move[i++];
+        var   toFaceIndex =      move[i++];
+        object.x         = fromX;
+        object.y         = fromY;
+        object.z         = fromZ;
+        object.faceIndex = fromFaceIndex;
+        var newProps = selectedObjectIdToNewProps[object.id];
+        if (newProps != null) {
+          newProps.x         = object.x;
+          newProps.y         = object.y;
+          newProps.z         = object.z;
+          newProps.faceIndex = object.faceIndex;
+        }
+        newMove.push(
+          object.id,
+          toX,
+          toY,
+          toZ,
+          toFaceIndex,
+          fromX,
+          fromY,
+          fromZ,
+          fromFaceIndex);
+        render(object, true);
+        break;
+      default: throw asdf();
     }
-    newMove.push(
-      object.id,
-      toX,
-      toY,
-      toZ,
-      toFaceIndex,
-      fromX,
-      fromY,
-      fromZ,
-      fromFaceIndex);
-    render(object, true);
   }
   renderOrder();
   resizeTableToFitEverything();
@@ -1082,7 +1102,7 @@ function renderUserList() {
   }).join("");
 
   getObjects().forEach(function(object) {
-    if (object.labelPlayerName == null) return;
+    if (object.labelPlayerName === "") return;
     var userName = null;
     if (object.labelPlayerName === myUser.role) {
       userName = "You";
@@ -1231,14 +1251,14 @@ function render(object, isAnimated) {
   objectDiv.style.width  = object.width;
   objectDiv.style.height = object.height;
   objectDiv.style.zIndex = z;
-  if (object.faces != null) {
+  if (object.faces.length > 0) {
     var facePath = object.faces[faceIndex];
     var imageUrlUrl = facePathToUrlUrl[facePath];
     if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
       objectDiv.dataset.facePath = facePath;
       objectDiv.style.backgroundImage = imageUrlUrl;
     }
-  } else if (object.backgroundColor != null) {
+  } else if (object.backgroundColor !== "") {
     objectDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
@@ -1252,7 +1272,7 @@ function render(object, isAnimated) {
   }
   objectDiv.style.display = "block";
 
-  if (object.backgroundColor != null) {
+  if (object.backgroundColor !== "") {
     var backgroundDiv = getBackgroundDiv(object.id);
     if (isAnimated) {
       backgroundDiv.classList.add("animatedMovement");
@@ -1328,7 +1348,7 @@ function renderOrder() {
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
-    if (object.labelPlayerName != null) {
+    if (object.labelPlayerName !== "") {
       // not really a stack height
       return;
     }
@@ -1556,8 +1576,6 @@ function connectToServer() {
       case SCREEN_MODE_PLAY:
         if (message.cmd === "makeAMove") {
           makeAMove(message.args, true);
-        } else if (message.cmd === "createObjects") {
-          todo();
         } else if (message.cmd === "userJoined") {
           usersById[message.args.id] = {
             id: message.args.id,
@@ -1612,25 +1630,51 @@ function makeAMove(move, shouldRender) {
   var userId = move[i++];
   if (userId === myUser.id) return;
   while (i < move.length) {
-    var object = objectsById[move[i++]];
-    var fromX         =      move[i++];
-    var fromY         =      move[i++];
-    var fromZ         =      move[i++];
-    var fromFaceIndex =      move[i++];
-    var   toX         =      move[i++];
-    var   toY         =      move[i++];
-    var   toZ         =      move[i++];
-    var   toFaceIndex =      move[i++];
-    object.x = toX;
-    object.y = toY;
-    object.z = toZ;
-    object.faceIndex = toFaceIndex;
-    var newProps = selectedObjectIdToNewProps[object.id];
-    if (newProps != null) {
-      newProps.x = toX;
-      newProps.y = toY;
-      newProps.z = toZ;
-      newProps.faceIndex = toFaceIndex;
+    var actionCode = move[i++];
+    var object;
+    switch (actionCode) {
+      case "c": // create
+        object = {
+          id:              move[i++],
+          x:               move[i++],
+          y:               move[i++],
+          z:               move[i++],
+          faceIndex:       move[i++],
+          width:           move[i++],
+          height:          move[i++],
+          faces:           move[i++],
+          snapZones:       move[i++],
+          locked:          move[i++],
+          visionWhitelist: move[i++],
+          hideFaces:       move[i++],
+          backgroundColor: move[i++],
+          labelPlayerName: move[i++],
+        };
+        registerObject(object);
+        break;
+      case "m": // move
+        object = objectsById[move[i++]];
+        var fromX         =  move[i++];
+        var fromY         =  move[i++];
+        var fromZ         =  move[i++];
+        var fromFaceIndex =  move[i++];
+        var   toX         =  move[i++];
+        var   toY         =  move[i++];
+        var   toZ         =  move[i++];
+        var   toFaceIndex =  move[i++];
+        object.x = toX;
+        object.y = toY;
+        object.z = toZ;
+        object.faceIndex = toFaceIndex;
+        var newProps = selectedObjectIdToNewProps[object.id];
+        if (newProps != null) {
+          newProps.x = toX;
+          newProps.y = toY;
+          newProps.z = toZ;
+          newProps.faceIndex = toFaceIndex;
+        }
+        break;
+      default: throw asdf();
     }
     if (shouldRender) objectsToRender.push(object);
   }
