@@ -580,21 +580,8 @@ function commitSelection(selection) {
         object.z = newProps.z;
         object.faceIndex = newProps.faceIndex;
         object.temporary = false;
-        move.push("c", // create
-          object.id,
-          object.x,
-          object.y,
-          object.z,
-          object.faceIndex,
-          object.width,
-          object.height,
-          object.faces,
-          object.snapZones,
-          object.locked,
-          object.visionWhitelist,
-          object.hideFaces,
-          object.backgroundColor,
-          object.labelPlayerName);
+        move.push("c"); // create
+        pushObjectProps(move, object);
       } else {
         move.push("m", // move
           object.id,
@@ -621,6 +608,40 @@ function commitSelection(selection) {
   };
   sendMessage(message);
   pushChangeToHistory(move);
+}
+function pushObjectProps(move, object) {
+  move.push(
+    object.id,
+    object.x,
+    object.y,
+    object.z,
+    object.faceIndex,
+    object.width,
+    object.height,
+    object.faces,
+    object.snapZones,
+    object.locked,
+    object.visionWhitelist,
+    object.hideFaces,
+    object.backgroundColor,
+    object.labelPlayerName);
+}
+function consumeObjectProps(move, object, i) {
+  object.id              = move[i++];
+  object.x               = move[i++];
+  object.y               = move[i++];
+  object.z               = move[i++];
+  object.faceIndex       = move[i++];
+  object.width           = move[i++];
+  object.height          = move[i++];
+  object.faces           = move[i++];
+  object.snapZones       = move[i++];
+  object.locked          = move[i++];
+  object.visionWhitelist = move[i++];
+  object.hideFaces       = move[i++];
+  object.backgroundColor = move[i++];
+  object.labelPlayerName = move[i++];
+  return i;
 }
 
 var SHIFT = 1;
@@ -772,14 +793,15 @@ function deleteSelection() {
   var move = [];
   objects.forEach(function(object) {
     if (!object.temporary) {
-      move.push("d", // delete
-        object.id);
+      move.push("d"); // delete
+      pushObjectProps(move, object);
     }
     deleteObject(object.id);
   });
   if (move.length > 0) {
     move.unshift(myUser.id);
     sendMessage({cmd:"makeAMove", args:move});
+    pushChangeToHistory(move);
   }
 
   if (draggingMode === DRAG_MOVE_SELECTION && !partialDeletion) draggingMode = DRAG_NONE;
@@ -1075,13 +1097,22 @@ function reverseChange(move) {
   while (i < move.length) {
     var actionCode = move[i++];
     switch (actionCode) {
-      case "c": // create
-        todo();
+      case "c": // create -> delete
+        var object = {};
+        i = consumeObjectProps(move, object, i);
+        newMove.push("d"); // delete
+        pushObjectProps(newMove, object);
+        deleteObject(object.id);
         break;
-      case "d": // delete
-        todo();
+      case "d": // delete -> create
+        var object = {};
+        i = consumeObjectProps(move, object, i);
+        newMove.push("c"); // create
+        pushObjectProps(newMove, object);
+        registerObject(object);
+        render(object, true);
         break;
-      case "m": // move
+      case "m": // move -> move
         var object = objectsById[move[i++]];
         var fromX         =      move[i++];
         var fromY         =      move[i++];
@@ -1671,33 +1702,20 @@ function makeAMove(move, shouldRender) {
   if (userId === myUser.id) return;
   while (i < move.length) {
     var actionCode = move[i++];
-    var object;
     switch (actionCode) {
       case "c": // create
-        object = {
-          id:              move[i++],
-          x:               move[i++],
-          y:               move[i++],
-          z:               move[i++],
-          faceIndex:       move[i++],
-          width:           move[i++],
-          height:          move[i++],
-          faces:           move[i++],
-          snapZones:       move[i++],
-          locked:          move[i++],
-          visionWhitelist: move[i++],
-          hideFaces:       move[i++],
-          backgroundColor: move[i++],
-          labelPlayerName: move[i++],
-        };
+        var object = {};
+        i = consumeObjectProps(move, object, i);
         registerObject(object);
         if (shouldRender) objectsToRender.push(object);
         break;
       case "d":
-        deleteObject(move[i++]);
+        var object = {};
+        i = consumeObjectProps(move, object, i);
+        deleteObject(object.id);
         break;
       case "m": // move
-        object = objectsById[move[i++]];
+        var object = objectsById[move[i++]];
         var fromX         =  move[i++];
         var fromY         =  move[i++];
         var fromZ         =  move[i++];
