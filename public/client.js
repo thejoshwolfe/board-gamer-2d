@@ -218,12 +218,20 @@ function registerObject(object) {
 function deleteObject(id) {
   if (hoverObject === objectsById[id]) hoverObject = null;
   delete objectsById[id];
-  delete objectsWithSnapZones[id];
-  delete hiderContainers[id];
+  deleteObjectFromArray(objectsWithSnapZones, id);
+  deleteObjectFromArray(hiderContainers, id);
   delete selectedObjectIdToNewProps[id];
   deleteDiv(getObjectDiv(id));
   var backgroundDiv = getBackgroundDiv(id);
   if (backgroundDiv != null) deleteDiv(backgroundDiv);
+}
+function deleteObjectFromArray(array, id) {
+  for (var i = 0; i < array.length; i++) {
+    if (array[i].id === id) {
+      array.splice(i, 1);
+      break;
+    }
+  }
 }
 function deleteDiv(div) {
   if (hoverDiv === div) hoverDiv = null;
@@ -968,7 +976,10 @@ closetShowHideButton.addEventListener("click", function(event) {
   renderCloset();
 });
 function renderCloset() {
-  closetUl.innerHTML = database.map(function(closetObject) {
+  closetUl.innerHTML = database.filter(function(closetObject) {
+    // TODO: show groups with items
+    return closetObject.closetName != null && closetObject.id != null;
+  }).map(function(closetObject) {
     var id        = closetObject.id;
     var name      = closetObject.closetName;
     var thumbnail = closetObject.thumbnail       || closetObject.faces[0];
