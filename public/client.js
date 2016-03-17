@@ -78,15 +78,15 @@ var facePathToUrlUrl = {
 };
 
 var gameDefinition;
-var objectDefinitionsById;
+var database;
 var objectsById;
 var objectsWithSnapZones; // cache
 var hiderContainers; // cache
 var changeHistory;
 var futureChanges;
-function initGame(game, history) {
+function initGame(_database, game, history) {
+  database = _database;
   gameDefinition = game;
-  objectDefinitionsById = {};
   objectsById = {};
   objectsWithSnapZones = [];
   hiderContainers = [];
@@ -96,21 +96,16 @@ function initGame(game, history) {
     var rawDefinition = gameDefinition.objects[i];
     var id = rawDefinition.id;
     if (id == null) id = autogenerateId(i);
-    objectDefinitionsById[id] = rawDefinition;
-    if (rawDefinition.prototype) continue;
 
-    var objectDefinition = getObjectDefinition(id);
-    if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
-    var object = makeObject(id, objectDefinition);
-    if (object.z == null) object.z = i;
+    var object = makeObject(id, rawDefinition.prototype);
+    object.x = rawDefinition.x;
+    object.y = rawDefinition.y;
+    object.z = i;
+    object.faceIndex = rawDefinition.faceIndex || 0;
+    object.locked = !!rawDefinition.locked;
+    if (object.faces != null) object.faces.forEach(preloadImagePath);
     registerObject(object);
   }
-  // reassign all the z's to be unique
-  var objects = getObjects();
-  objects.sort(compareZ);
-  objects.forEach(function(object, i) {
-    object.z = i;
-  });
   fixFloatingThingZ();
 
   // replay history
@@ -121,36 +116,6 @@ function initGame(game, history) {
   document.getElementById("roomCodeSpan").textContent = roomCode;
 
   checkForDoneLoading();
-}
-function getObjectDefinition(id) {
-  // resolve prototypes
-  var result = {};
-  recurse(id, 0);
-  return result;
-
-  function recurse(id, depth) {
-    var definition = objectDefinitionsById[id];
-    for (var property in definition) {
-      if (property === "prototypes") continue; // special handling
-      if (property === "prototype" && depth !== 0) continue;  // don't inherit this property
-      if (property in result) continue; // shadowed
-      var value = definition[property];
-      if (property === "front") {
-        if (result.faces == null) result.faces = [];
-        result.faces[0] = value;
-      } else if (property === "back") {
-        if (result.faces == null) result.faces = [];
-        result.faces[1] = value;
-      } else {
-        result[property] = value;
-      }
-    }
-    if (definition.prototypes != null) {
-      definition.prototypes.forEach(function(id) {
-        recurse(id, depth + 1);
-      });
-    }
-  }
 }
 function resolveFace(face) {
   if (face === "front") return 0;
@@ -198,19 +163,28 @@ function checkForDoneLoading() {
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
-function makeObject(id, objectDefinition) {
+function makeObject(id, prototypeId) {
+  // TODO: hash lookup
+  var objectDefinition;
+  for (var i = 0; i < database.length; i++) {
+    if (database[i].id === prototypeId) {
+      objectDefinition = database[i];
+      break;
+    }
+  }
+  if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
   return {
     id: id,
     temporary: false,
-    x: objectDefinition.x,
-    y: objectDefinition.y,
-    z: objectDefinition.z,
-    faceIndex: 0,
+    x: null,
+    y: null,
+    z: null,
+    faceIndex: null,
+    locked: null,
     width:  objectDefinition.width  || error(),
     height: objectDefinition.height || error(),
     faces: objectDefinition.faces || [],
     snapZones: objectDefinition.snapZones || [],
-    locked: !!objectDefinition.locked,
     visionWhitelist: objectDefinition.visionWhitelist || [],
     hideFaces: objectDefinition.hideFaces || [],
     backgroundColor: objectDefinition.backgroundColor || "",
@@ -263,8 +237,8 @@ function autogenerateId(i) {
 function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
+  database = null;
   gameDefinition = null;
-  objectDefinitionsById = null;
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
@@ -977,8 +951,6 @@ function renderHelp() {
   }
 }
 
-var closetObjects = null;
-var closetObjectsById = null;
 var showCloset = false;
 
 var closetShowHideButton = document.getElementById("closetShowHideButton");
@@ -993,27 +965,10 @@ closetShowHideButton.addEventListener("click", function(event) {
     return;
   }
   showCloset = true;
-  if (closetObjects == null) {
-    // lazy load
-    closetObjects = "loading";
-    httpGet("closet.json", function(result) {
-      closetObjects = JSON.parse(result);
-      closetObjectsById = {};
-      closetObjects.forEach(function(object) {
-        closetObjectsById[object.id] = object;
-      });
-      if (showCloset) renderCloset();
-    });
-    closetUl.innerHTML = "<li>Loading...</li>";
-    return;
-  } else if (closetObjects === "loading") {
-    // 3 clicks before the server responded with that json
-    return;
-  }
   renderCloset();
 });
 function renderCloset() {
-  closetUl.innerHTML = closetObjects.map(function(closetObject) {
+  closetUl.innerHTML = database.map(function(closetObject) {
     var id        = closetObject.id;
     var name      = closetObject.closetName;
     var thumbnail = closetObject.thumbnail       || closetObject.faces[0];
@@ -1036,7 +991,7 @@ function onClosetObjectMouseDown(event) {
   event.stopPropagation();
   var x = this.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
   var y = this.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
-  var closetObject = closetObjectsById[this.dataset.id];
+  var prototypeId = this.dataset.id;
 
   // create temporary objects
   var numberModifier = consumeNumberModifier();
@@ -1045,7 +1000,7 @@ function onClosetObjectMouseDown(event) {
   var z = findMaxZ();
   z++;
   for (var i = 0; i < numberModifier; i++) {
-    stackOfObjects.push(makeTemporaryObject(closetObject, x, y, z++));
+    stackOfObjects.push(makeTemporaryObject(prototypeId, x, y, z++));
   }
   setSelectedObjects(stackOfObjects);
 
@@ -1059,7 +1014,6 @@ function onClosetObjectMouseDown(event) {
 }
 function onClosetObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
-  var closetObject = closetObjectsById[this.dataset.id];
   setHoverDiv(this);
 }
 function onClosetObjectMouseOut(event) {
@@ -1068,15 +1022,15 @@ function onClosetObjectMouseOut(event) {
   }
 }
 
-function makeTemporaryObject(rawDefinition, x, y, z) {
+function makeTemporaryObject(prototypeId, x, y, z) {
   var id = generateRandomId();
-  objectDefinitionsById[id] = rawDefinition;
-  var objectDefinition = getObjectDefinition(id);
-  var object = makeObject(id, objectDefinition);
+  var object = makeObject(id, prototypeId);
   object.temporary = true;
   object.x = x;
   object.y = y;
   object.z = z;
+  object.faceIndex = 0;
+  object.locked = false;
   registerObject(object);
   return object;
 }
@@ -1640,7 +1594,7 @@ function connectToServer() {
           message.args.users.forEach(function(otherUser) {
             usersById[otherUser.id] = otherUser;
           });
-          initGame(message.args.game, message.args.history);
+          initGame(message.args.database, message.args.game, message.args.history);
           renderUserList();
         } else throw asdf;
         break;
