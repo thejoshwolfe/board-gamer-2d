@@ -101,7 +101,7 @@ function initGame(_database, game, history) {
   for (var i = 0; i < gameDefinition.objects.length; i++) {
     var rawDefinition = gameDefinition.objects[i];
     var id = rawDefinition.id;
-    if (id == null) id = autogenerateId(i);
+    if (id == null) throw new Error("game object has no id");
 
     var object = makeObject(id, rawDefinition.prototype);
     object.x = rawDefinition.x;
@@ -236,10 +236,6 @@ function deleteObjectFromArray(array, id) {
 function deleteDiv(div) {
   if (hoverDiv === div) hoverDiv = null;
   tableDiv.removeChild(div);
-}
-
-function autogenerateId(i) {
-  return "object-" + i;
 }
 
 function deleteTableAndEverything() {
