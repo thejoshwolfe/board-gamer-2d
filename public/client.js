@@ -174,6 +174,7 @@ function makeObject(id, prototypeId) {
   if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
   return {
     id: id,
+    prototype: prototypeId,
     temporary: false,
     x: null,
     y: null,
@@ -594,36 +595,22 @@ function commitSelection(selection) {
 function pushObjectProps(move, object) {
   move.push(
     object.id,
+    object.prototype,
     object.x,
     object.y,
     object.z,
-    object.faceIndex,
-    object.width,
-    object.height,
-    object.faces,
-    object.snapZones,
-    object.locked,
-    object.visionWhitelist,
-    object.hideFaces,
-    object.backgroundColor,
-    object.labelPlayerName);
+    object.faceIndex);
 }
-function consumeObjectProps(move, object, i) {
-  object.id              = move[i++];
+var objectPropCount = 6;
+function consumeObjectProps(move, i) {
+  var    id              = move[i++];
+  var    prototypeId     = move[i++];
+  var object = makeObject(id, prototypeId);
   object.x               = move[i++];
   object.y               = move[i++];
   object.z               = move[i++];
   object.faceIndex       = move[i++];
-  object.width           = move[i++];
-  object.height          = move[i++];
-  object.faces           = move[i++];
-  object.snapZones       = move[i++];
-  object.locked          = move[i++];
-  object.visionWhitelist = move[i++];
-  object.hideFaces       = move[i++];
-  object.backgroundColor = move[i++];
-  object.labelPlayerName = move[i++];
-  return i;
+  return object;
 }
 
 var SHIFT = 1;
@@ -1070,15 +1057,15 @@ function reverseChange(move) {
     var actionCode = move[i++];
     switch (actionCode) {
       case "c": // create -> delete
-        var object = {};
-        i = consumeObjectProps(move, object, i);
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
         newMove.push("d"); // delete
         pushObjectProps(newMove, object);
         deleteObject(object.id);
         break;
       case "d": // delete -> create
-        var object = {};
-        i = consumeObjectProps(move, object, i);
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
         newMove.push("c"); // create
         pushObjectProps(newMove, object);
         registerObject(object);
@@ -1676,14 +1663,14 @@ function makeAMove(move, shouldRender) {
     var actionCode = move[i++];
     switch (actionCode) {
       case "c": // create
-        var object = {};
-        i = consumeObjectProps(move, object, i);
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
         registerObject(object);
         if (shouldRender) objectsToRender.push(object);
         break;
       case "d":
-        var object = {};
-        i = consumeObjectProps(move, object, i);
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
         deleteObject(object.id);
         break;
       case "m": // move
