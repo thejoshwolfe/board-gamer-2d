@@ -79,6 +79,7 @@ var facePathToUrlUrl = {
 
 var gameDefinition;
 var database;
+var databaseById;
 var objectsById;
 var objectsWithSnapZones; // cache
 var hiderContainers; // cache
@@ -86,6 +87,11 @@ var changeHistory;
 var futureChanges;
 function initGame(_database, game, history) {
   database = _database;
+  databaseById = {};
+  database.forEach(function(closetObject) {
+    databaseById[closetObject.id] = closetObject;
+    if (closetObject.faces != null) closetObject.faces.forEach(preloadImagePath);
+  });
   gameDefinition = game;
   objectsById = {};
   objectsWithSnapZones = [];
@@ -103,7 +109,6 @@ function initGame(_database, game, history) {
     object.z = i;
     object.faceIndex = rawDefinition.faceIndex || 0;
     object.locked = !!rawDefinition.locked;
-    if (object.faces != null) object.faces.forEach(preloadImagePath);
     registerObject(object);
   }
   fixFloatingThingZ();
@@ -165,13 +170,7 @@ function checkForDoneLoading() {
 }
 function makeObject(id, prototypeId) {
   // TODO: hash lookup
-  var objectDefinition;
-  for (var i = 0; i < database.length; i++) {
-    if (database[i].id === prototypeId) {
-      objectDefinition = database[i];
-      break;
-    }
-  }
+  var objectDefinition = databaseById[prototypeId];
   if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
   return {
     id: id,
@@ -246,6 +245,7 @@ function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
   database = null;
+  databaseById = null;
   gameDefinition = null;
   objectsById = null;
   usersById = {};
@@ -978,7 +978,7 @@ closetShowHideButton.addEventListener("click", function(event) {
 function renderCloset() {
   closetUl.innerHTML = database.filter(function(closetObject) {
     // TODO: show groups with items
-    return closetObject.closetName != null && closetObject.id != null;
+    return closetObject.closetName != null;
   }).map(function(closetObject) {
     var id        = closetObject.id;
     var name      = closetObject.closetName;
@@ -1002,7 +1002,12 @@ function onClosetObjectMouseDown(event) {
   event.stopPropagation();
   var x = this.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
   var y = this.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
-  var prototypeId = this.dataset.id;
+  var closetId = this.dataset.id;
+  var closetObject = databaseById[closetId];
+  var prototypeIds = closetObject.items;
+  if (prototypeIds == null) {
+    prototypeIds = [closetObject.id];
+  }
 
   // create temporary objects
   var numberModifier = consumeNumberModifier();
@@ -1011,7 +1016,9 @@ function onClosetObjectMouseDown(event) {
   var z = findMaxZ();
   z++;
   for (var i = 0; i < numberModifier; i++) {
-    stackOfObjects.push(makeTemporaryObject(prototypeId, x, y, z++));
+    prototypeIds.forEach(function(prototypeId) {
+      stackOfObjects.push(makeTemporaryObject(prototypeId, x, y, z++));
+    });
   }
   setSelectedObjects(stackOfObjects);
 
