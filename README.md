@@ -62,6 +62,8 @@ Rather, this enables board game creators to prototype ideas before spending mone
 
 ## vs Tabletop Simulator
 
+*Note: This section is out of date. This compares against a very old version of Tabletop Simulator.*
+
 Tabletop Simulator is available on Steam for a reasonable price.
 Board Gamer 2d is free.
 
