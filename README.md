@@ -4,7 +4,12 @@
 
 ## Demo
 
-http://board-gamer-2d.wolfesoftware.com/
+Install and setup locally via:
+
+    git clone https://github.com/clach04/board-gamer-2d.git
+    npm install
+    node lib/server.js
+
 
 ## Status
 
