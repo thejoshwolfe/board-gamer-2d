@@ -14,19 +14,19 @@ Install and setup locally via:
 
 To allow external device access:
 
-  diff --git a/lib/server.js b/lib/server.js
-  index a0d9906..5d35db1 100644
-  --- a/lib/server.js
-  +++ b/lib/server.js
-  @@ -23,7 +23,7 @@ function main() {
-       webSocketServer.on("connection", function(socket) {
-         handleNewSocket(socket);
+    diff --git a/lib/server.js b/lib/server.js
+    index a0d9906..5d35db1 100644
+    --- a/lib/server.js
+    +++ b/lib/server.js
+    @@ -23,7 +23,7 @@ function main() {
+         webSocketServer.on("connection", function(socket) {
+           handleNewSocket(socket);
+         });
+    -    httpServer.listen(25407, "127.0.0.1", function(err) {
+    +    httpServer.listen(25407, "0.0.0.0", function(err) {
+           console.log("serving: http://127.0.0.1:25407/");
+         });
        });
-  -    httpServer.listen(25407, "127.0.0.1", function(err) {
-  +    httpServer.listen(25407, "0.0.0.0", function(err) {
-         console.log("serving: http://127.0.0.1:25407/");
-       });
-     });
 
 
 ## Status
