@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+
+import sys, os
+import re
+import subprocess, shlex
+from enum import Enum
+
+from util import (
+    format_script_to_call_file,
+    write_file_if_not_exists,
+    git,
+)
+from github import (
+    do_remote_install_as_github_action,
+    github_action_setup_note,
+    read_github_action_environment,
+)
+from gitlab import (
+    gitlab_ci_setup_note,
+    read_gitlab_ci_environment,
+    do_remote_install_as_gitlab_ci,
+)
+
+class RemoteTechnology(Enum):
+    GITHUB_ACTION = "github-action"
+    GITLAB_CI = "gitlab-ci"
+    DIRECT = "direct"
+    def __str__(self):
+        return self.value
+
+refs_db_ref_name = "refs/gwp/refs-db"
+
+def cli():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("action", choices=["save", "install", "uninstall", "init-in-new-repo", "log"])
+    parser.add_argument("--remote", type=RemoteTechnology, choices=RemoteTechnology, help=
+        "Switch to the remote version of the command for the given remote technology. "
+        + "===GITHUB-ACTION===  " + github_action_setup_note + " "
+        + "===GITLAB-CI=== " + gitlab_ci_setup_note + " "
+        + "===DIRECT=== " + direct_setup_note)
+    parser.add_argument("-f", "--force", action="store_true")
+    parser.add_argument("--purge", action="store_true", help=
+        "also delete the history database forever")
+
+    parser.add_argument("--vendor", action="store_true", help=
+        "When running 'install' with '--remote', give this option to vendor this program into your repo automatically. "
+        "This program will be installed at `deps/gwp/git-refs`. "
+        "See also the --git-vendor option.")
+    parser.add_argument("--git-vendor", help=
+        "When using --vendor, use this option to give a path to `git-vendor`. "
+        "Omitting this option will install `git-vendor` along with this script. "
+        "`git-vendor` can be found here: https://github.com/thejoshwolfe/git-vendor")
+
+    args = parser.parse_args()
+
+    if args.action == "init-in-new-repo":
+        subprocess.run([__file__, "install"], check=True)
+        subprocess.run([__file__, "install", "--remote", "--vendor", "--as-github-action"], check=True)
+    elif args.action == "save":
+        if args.remote:
+            do_remote_save(args.remote)
+        else:
+            do_save()
+    elif args.action == "install":
+        if args.remote:
+            do_remote_install(args.force, args.remote, args.vendor, args.git_vendor)
+        else:
+            do_install(args.force)
+    elif args.action == "uninstall":
+        if args.remote:
+            do_remote_uninstall(args.purge, args.remote)
+        else:
+            do_uninstall(args.purge)
+    elif args.action == "log":
+        if args.remote:
+            do_remote_log()
+        else:
+            do_log(refs_db_ref_name)
+
+def do_remote_log():
+    git("fetch", "origin", refs_db_ref_name)
+    do_log("FETCH_HEAD")
+def do_log(history_ref):
+    try:
+        history_lines = git(
+            "rev-list", "--format=%H %at %ah", "--no-commit-header", history_ref,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        sys.exit("ERROR: git-refs is not installed. try `git-refs install`")
+    # Now that the above error handling is done, we're confident that spawning this child process is not a waste.
+    less_process = subprocess.Popen(["less", "-RXF"], stdin=subprocess.PIPE)
+    try:
+        log_loop(history_lines, less_process.stdin)
+    except (KeyboardInterrupt, BrokenPipeError):
+        # It's typical for this command to have super long output, so it's not an error to interrupt it in the middle.
+        # Broken pipe is what happens when output is being piped into a process that closes its stdin,
+        # e.g. piping into `head` or quitting out of `less`.
+        pass
+    finally:
+        less_process.stdin.close()
+    less_process.wait()
+def log_loop(history_lines, output_pipe):
+    current_commit, current_date_seconds, current_date_human = None, None, None
+    current_db = None
+
+    def flush(next_commit, next_date_seconds, next_date_human):
+        nonlocal current_commit, current_date_seconds, current_date_human
+        nonlocal current_db
+        # pylint: disable=unsubscriptable-object
+
+        if next_commit != None:
+            next_db = load_saved_refs_db(next_commit)
+        else:
+            next_db = {}
+
+        if current_db != None:
+            # - [deleted]           origin/experiment-versions
+            #   8b1c22f1..a5f4e109  origin/main
+            # * [new branch]        origin/dc/grid-size-300
+            #   9b19d82e..a3896d61  origin/experiment-activation
+
+            added_keys, modified_keys, removed_keys = diff_dicts(next_db, current_db)
+            block_of_lines = [
+                "{:<30} {}\n".format("{} {}..{}".format("+", "[new]", shorten_ref(current_db[key])), key)
+                for key in sorted(added_keys)
+            ] + [
+                "{:<30} {}\n".format("{} {}..{}".format(" ", shorten_ref(next_db[key]), shorten_ref(current_db[key])), key)
+                for key in sorted(modified_keys)
+            ] + [
+                "{:<30} {}\n".format("{} {}..{}".format("-", shorten_ref(next_db[key]), "[deleted]"), key)
+                for key in sorted(removed_keys)
+            ]
+
+            # Put the human timestamp in the front of the first line, and just space for the following lines.
+            block_of_lines[0] = "{:<16} {}".format(current_date_human, block_of_lines[0])
+            block_of_lines[1:] = ["{:<16} {}".format("", line) for line in block_of_lines[1:]]
+
+            # Draw a line in temporal gaps.
+            if next_date_seconds == None or next_date_seconds < current_date_seconds - 5 * 60:
+                block_of_lines[-1] = add_underline(block_of_lines[-1])
+
+            output_pipe.write("".join(block_of_lines).encode("utf8"))
+            output_pipe.flush()
+
+        current_commit, current_date_seconds, current_date_human = next_commit, next_date_seconds, next_date_human
+        current_db = next_db
+
+    for history_line in history_lines:
+        # Example:
+        #  29bca3a24502c56ce67726fdf9a512e7c37dc555 1700512148 52 minutes ago
+        next_commit, next_date_seconds_str, next_date_human = history_line.split(" ", 2)
+        flush(next_commit, int(next_date_seconds_str), next_date_human)
+    flush(None, None, None)
+
+def diff_dicts(a, b):
+    added_keys = b.keys() - a.keys()
+    removed_keys = a.keys() - b.keys()
+    modified_keys = {
+        key
+        for key in a.keys() & b.keys()
+        if a[key] != b[key]
+    }
+    return added_keys, modified_keys, removed_keys
+
+def add_underline(line):
+    return "\x1b[4m{}\x1b[m{}".format(line[:47], line[47:])
+
+def do_save():
+    old_db = load_saved_refs_db(refs_db_ref_name)
+    new_db = compute_refs_db()
+
+    if old_db == new_db: return
+
+    # Get parent commit.
+    try:
+        [parent_commit_object_name] = git("rev-parse", "--verify", refs_db_ref_name, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        parent_commit_object_name = None
+
+    commit_object_name = make_commit_for_db(new_db, parent_commit_object_name)
+
+    if parent_commit_object_name != None:
+        update_ref_extra_args = [parent_commit_object_name]
+    else:
+        # first commit
+        update_ref_extra_args = []
+
+    git("update-ref", refs_db_ref_name, commit_object_name, *update_ref_extra_args)
+
+def make_commit_for_db(new_db, parent_commit_object_name, name_override=None, email_override=None):
+    # Save to refs_db_ref_name
+    new_content = format_refs_db(new_db)
+    [blob_object_name] = git("hash-object", "-w", "-t", "blob", "--stdin", input=new_content.encode("utf8"))
+    tree_content = "100644 blob {}\t{}\n".format(blob_object_name, "refs")
+    [tree_object_name] = git("mktree", input=tree_content.encode("utf8"))
+    cmd = ["commit-tree", tree_object_name]
+    if parent_commit_object_name != None:
+        cmd.extend(["-p", parent_commit_object_name])
+    if email_override:
+        cmd[:0] = ["-c", "user.email=" + email_override]
+    if name_override:
+        cmd[:0] = ["-c", "user.name=" + name_override]
+
+    [commit_object_name] = git(*cmd, input=b"")
+    return commit_object_name
+
+def do_remote_save(remote_technology):
+    name_override = None
+    email_override = None
+    if remote_technology == RemoteTechnology.GITHUB_ACTION:
+        url, name_override, email_override, additional_ignore_prefixes = read_github_action_environment()
+    elif remote_technology == RemoteTechnology.GITLAB_CI:
+        url, name_override, email_override, additional_ignore_prefixes = read_gitlab_ci_environment()
+    elif remote_technology == RemoteTechnology.DIRECT:
+        url, name_override, email_override, additional_ignore_prefixes = "origin", None, None, ()
+    else:
+        assert False
+    lines = git("ls-remote", "--symref", url)
+    new_db = {}
+    symrefs = {}
+    for line in lines:
+        value, ref_name = line.split("\t", 1)
+        if ref_name == refs_db_ref_name:
+            # Trying to version control the version control db itself would lead to perpetual dirty state.
+            continue
+        if any(ref_name.startswith(prefix) for prefix in additional_ignore_prefixes):
+            continue
+        if value.startswith("ref: "):
+            symrefs[ref_name] = "ref:" + value[len("ref: "):]
+        else:
+            new_db[ref_name] = value
+
+    # We get symbolic *and* resolved entries for HEAD, so overwrite the non-symbolic refs with the more correct symrefs, if we get them.
+    new_db.update(symrefs)
+
+    # We need the existing db for two reasons.
+    # We need to check if the current content is any different.
+    # And we need an object name for the parent commit field.
+    try:
+        git("fetch",
+            "--depth", "1",
+            url, refs_db_ref_name,
+            # This saves to FETCH_HEAD.
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        parent_commit_object_name = None
+        old_db = {}
+    else:
+        [parent_commit_object_name] = git("rev-parse", "--verify", "FETCH_HEAD")
+        old_db = load_saved_refs_db(parent_commit_object_name)
+
+    if old_db == new_db:
+        # No change.
+        return
+
+    commit_object_name = make_commit_for_db(
+        new_db, parent_commit_object_name,
+        name_override=name_override,
+        email_override=email_override,
+    )
+
+    git("push", url, "{}:{}".format(commit_object_name, refs_db_ref_name))
+
+def do_install(force):
+    # The reference-transaction hook always executes in the repo root.
+    [cwd] = git("rev-parse", "--show-toplevel")
+    save_cmd = format_script_to_call_file(__file__, "save", cwd=cwd)
+
+    [hooks_dir] = git("rev-parse", "--git-path", "hooks")
+    preamble = [
+        '#!/usr/bin/env bash',
+        '',
+        '# Ignore any diff passed in on stdin.',
+        'exec 0<&-',
+        '',
+        'unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE',
+        'unset GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE',
+        '',
+    ]
+
+    # This catches almost all ref updates, but not symbolic ref updates.
+    install_hook(force,
+        os.path.join(hooks_dir, "reference-transaction"),
+        preamble + [
+            'if [[ "$1" == committed ]]; then',
+            '    ' + save_cmd,
+            'fi',
+        ],
+    )
+
+    # Symbolic ref updates happen during rebase (HEAD gets detached and reattached).
+    install_hook(force,
+        os.path.join(hooks_dir, "post-rewrite"),
+        preamble + [
+            save_cmd,
+        ],
+    )
+
+    # Symbolic ref updates happen during checkout (switching branches)
+    install_hook(force,
+        os.path.join(hooks_dir, "post-checkout"),
+        preamble + [
+            '# flag=1 is a branch checkout (not a file checkout).',
+            'if [[ "$3" == 1 ]]; then',
+            '    ' + save_cmd,
+            'fi',
+        ],
+    )
+
+    # Also do a save before we're done.
+    do_save()
+
+def do_uninstall(should_purge):
+    [hooks_dir] = git("rev-parse", "--git-path", "hooks")
+    for name in ["post-rewrite", "reference-transaction", "post-checkout"]:
+        path = os.path.join(hooks_dir, name)
+        # Make sure we're deleting our own hook
+        try:
+            with open(path) as f:
+                if "git-refs" not in f.read():
+                    # That's your script, not mine. I won't delete it.
+                    continue
+        except FileNotFoundError:
+            continue
+        os.remove(path)
+    if should_purge:
+        git("update-ref", "-d", refs_db_ref_name)
+        # For some reason the above command exits successfully when the ref doesn't exist.
+
+def install_hook(force, hook_path, content_lines):
+    content = "\n".join(content_lines) + "\n"
+
+    write_file_if_not_exists(hook_path, content, force)
+
+    if (os.stat(hook_path).st_mode & 0o100) == 0:
+        os.chmod(hook_path, 0o766)
+
+def do_remote_install(force, remote_technology, should_vendor, git_vendor_path):
+    [this_script_repo_root] = git("rev-parse", "--show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__)))
+    this_file = __file__
+
+    if remote_technology in (RemoteTechnology.GITHUB_ACTION, RemoteTechnology.GITLAB_CI):
+        [repo_root] = git("rev-parse", "--show-toplevel")
+        if repo_root != this_script_repo_root:
+            if not should_vendor:
+                sys.exit("ERROR: You need to install this script into your repo first. try the '--vendor' option.")
+            this_file = do_vendor(repo_root, this_script_repo_root, git_vendor_path)
+        elif should_vendor:
+            sys.exit("ERROR: This script is already in your repo. Please omit the '--vendor' option.")
+    elif remote_technology == RemoteTechnology.DIRECT:
+        [repo_root] = git("rev-parse", "--git-dir")
+        if should_vendor:
+            sys.exit("ERROR: cannot use '--vendor' with '--remote=direct'.")
+    else: assert False
+
+    if remote_technology == RemoteTechnology.GITHUB_ACTION:
+        do_remote_install_as_github_action(force, repo_root, this_file)
+    elif remote_technology == RemoteTechnology.GITLAB_CI:
+        do_remote_install_as_gitlab_ci(force, repo_root, this_file)
+    elif remote_technology == RemoteTechnology.DIRECT:
+        do_remote_install_as_direct(force, repo_root, this_file)
+    else: assert False
+
+direct_setup_note = (
+    "In the absence of a better option, directly manipulate the remote with standard git technology. "
+    "For 'install', run this command in your bare git repo on the server, "
+    "and a server hook will be installed that executes this gwp installation. "
+    "Warning: git server hooks run with a very high level of access, "
+    "so make sure that this gwp installation is not writable by untrusted parties, "
+    "otherwise an attacker can overwrite this gwp program to execute arbitrary code with elevated permissions when someone pushes to your repository. "
+    "Unfortunately, there is no user authentication information provided to git server hooks, "
+    "so the reference change log will be lacking any indication of who caused what changes. "
+    "It's unclear if this is ever the right option to use. "
+    "If you end up using this option, please let me know in a gwp issue so I can better understand and support the use case; thanks. "
+    "For 'save', this command will fetch and push an update for the 'origin' remote once as the currently configured git user."
+)
+def do_remote_install_as_direct(force, repo_root, git_refs_program_path):
+    if git("config", "core.bare", cwd=repo_root) != ["true"]:
+        sys.exit("ERROR: This doesn't look like a bare server git repo: " + repo_root)
+    [hooks_dir] = git("rev-parse", "--git-path", "hooks", cwd=repo_root)
+    hook_path = os.path.join(hooks_dir, "post-receive")
+    install_hook(force, hook_path, [
+        "#!/usr/bin/env bash",
+        "",
+        "# Ignore any diff passed in on stdin.",
+        "exec 0<&-",
+        "",
+        "# Git server hooks don't have access to user authentication information.",
+        "export GIT_AUTHOR_NAME=none",
+        "export GIT_AUTHOR_EMAIL=none@none.invalid",
+        "export GIT_COMMITTER_NAME=none",
+        "export GIT_COMMITTER_EMAIL=none@none.invalid",
+        "unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE",
+        "",
+        shlex.join(["exec", os.path.abspath(git_refs_program_path), "save"]),
+    ])
+
+    print("===============================================")
+    print("Make sure these files are locked down to prevent arbitrary code execution:")
+    print("")
+    subprocess.run(["ls", "-la", hook_path, os.path.dirname(os.path.abspath(git_refs_program_path))])
+    print("===============================================")
+
+def do_remote_uninstall(purge, remote_technology):
+    assert False, "TODO"
+
+def do_vendor(repo_root, this_script_repo_root, git_vendor_path):
+    if git_vendor_path == None:
+        cmd = [
+            os.path.join(this_script_repo_root, "deps/git-vendor/git-vendor"),
+            "self",
+        ]
+        try:
+            subprocess.run(cmd, cwd=repo_root, check=True)
+        except FileNotFoundError:
+            sys.exit("ERROR: Cannot find `git-vendor` relative to this script. If this script is being run outside its source repo, give the '--git-vendor' option.")
+        # Now use the new one.
+        git_vendor_path = os.path.join(repo_root, "deps/git-vendor/git-vendor")
+    subprocess.run([
+        git_vendor_path, "add",
+        "--dir", "deps/gwp",
+        "--url", "https://github.com/thejoshwolfe/gwp.git",
+        "--follow-branch", "main",
+        "--subdir", "bin",
+    ], cwd=repo_root, check=True)
+
+    return os.path.join(repo_root, "deps/gwp/git-refs")
+
+
+def format_refs_db(refs_db):
+    content = "".join(
+        "{}:{}\n".format(ref_name, value)
+        for ref_name, value in sorted(refs_db.items())
+    )
+    return content
+
+def load_saved_refs_db(commit):
+    try:
+        lines = git("cat-file", "-p", commit + ":refs", stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return {}
+
+    result = dict(line.split(":", 1) for line in lines)
+    return result
+
+def compute_refs_db():
+    result = {}
+    try:
+        lines = git("show-ref", "--head")
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 1:
+            # There are no refs. This can happen with a freshly initted git repo.
+            lines = []
+        else:
+            raise
+
+    # From `git help show-ref`:
+    # > The output is in the format: <SHA-1 ID> <space> <reference name>.
+    # Example:
+    #   615624c2c2cfbed7e30a158493b704231b14ff8e refs/heads/main
+    show_ref_line_re = re.compile(r'^([0-9a-f]{40}|[0-9a-f]{64}) (.*)$')
+    remote_head_re = re.compile(r'^refs/remotes/(.*)/HEAD$')
+
+    heads = ["HEAD"]
+    for line in lines:
+        (object_name, ref_name) = show_ref_line_re.match(line).groups()
+        if ref_name == refs_db_ref_name:
+            # Trying to version control the version control db itself would lead to perpetual dirty state.
+            continue
+        result[ref_name] = object_name
+
+        # Note the symbolic looking refs to maybe correct later.
+        if remote_head_re.match(ref_name):
+            heads.append(ref_name)
+
+    for possible_symbolic_ref in heads:
+        try:
+            [ref_value] = git("symbolic-ref", possible_symbolic_ref, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            continue
+        # `git show-ref` resolves symrefs, but that's not what we want.
+        # Update symrefs with their symbolic value instead.
+        result[possible_symbolic_ref] = "ref:" + ref_value
+
+    return result
+
+def shorten_ref(ref):
+    if ref.startswith("ref:"): return ref
+    # Using `git rev-parse --short` is too slow, and doesn't work for gc'ed objects.
+    return ref[:12]
+
+
+if __name__ == "__main__":
+    cli()

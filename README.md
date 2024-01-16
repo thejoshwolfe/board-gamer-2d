@@ -2,9 +2,32 @@
 
 2d multiplayer html5 board game simulator.
 
-## Demo
+## Run it locally
 
-http://board-gamer-2d.wolfesoftware.com/
+```
+npm install
+node lib/server.js
+```
+
+To allow external device access: (Note: The security of this project has not been thoroughly audited. Use at your own risk.)
+
+```diff
+diff --git a/lib/server.js b/lib/server.js
+index a0d9906..f3e06ac 100644
+--- a/lib/server.js
++++ b/lib/server.js
+@@ -23,8 +23,8 @@ function main() {
+     webSocketServer.on("connection", function(socket) {
+       handleNewSocket(socket);
+     });
+-    httpServer.listen(25407, "127.0.0.1", function(err) {
+-      console.log("serving: http://127.0.0.1:25407/");
++    httpServer.listen(25407, "0.0.0.0", function(err) {
++      console.log("serving: http://0.0.0.0:25407/");
+     });
+   });
+ }
+```
 
 ## Status
 
@@ -59,31 +82,3 @@ Some styles of games are outside the scope of this project, such as Mousetrap or
 
 Board Gamer 2d is not trying to compete with board game companies by providing a free alternative to buying the real game.
 Rather, this enables board game creators to prototype ideas before spending money to see their ideas realized with physical objects.
-
-## vs Tabletop Simulator
-
-Tabletop Simulator is available on Steam for a reasonable price.
-Board Gamer 2d is free.
-
-Tabletop Simulator is closed source.
-Board Gamer 2d is open source.
-
-Tabletop Simulator requires an account for multiplayer.
-Board Gamer 2d allows anyone to join a room they know the code for; then they type in their name, which they can make up on the spot.
-
-Tabletop Simulator must be trusted to run natively on your system after being installed.
-Board Gamer 2d runs in the browser.
-
-Tabletop Simulator has a community through Steam Workshop.
-Board Gamer 2d has no clear plan for a community solution.
-
-Tabletop Simulator is a 3d physics sandbox.
-Board Gamer 2d is a 2d object manipulation sandbox.
-Tabletop Simulator has a problem where game pieces can fall over and need to be picked up and put back upright.
-Tabletop Simulator has a "flip table" feature, which is really just a joke.
-
-Tabletop Simulator uses "unpredictable" physics for dice rolls and coin flips.
-Board Gamer 2d uses a random number generator for dice rolls and coin flips.
-
-Tabletop Simulator's system for creating a deck of cards has numerous problems.
-The Board Gamer 2d engine allows arbitrary images or spritesheets with arbitrary coordinates and dimensions for all objects.

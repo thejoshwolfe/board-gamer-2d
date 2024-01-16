@@ -71,10 +71,8 @@ var tableDiv = document.getElementById("tableDiv");
 
 var usersById = {};
 
-var facePathToUrlUrl = {
-  //"face1.png": "", // loading...
-  //"face2.png": 'url("face2.png")',
-  //"face3.png#0,0,32,32": 'url("data://...")',
+var imageUrlToSize = {
+  //"face1.png": {width: 100, height: 200},
 };
 
 var gameDefinition;
@@ -127,43 +125,45 @@ function resolveFace(face) {
   if (face === "back") return 1;
   return face;
 }
-function preloadImagePath(path) {
-  var url = facePathToUrlUrl[path];
-  if (url != null) return; // already loaded or loading
-  facePathToUrlUrl[path] = ""; // loading...
-  var img = new Image();
-  var hashIndex = path.indexOf("#");
-  if (hashIndex !== -1) {
-    var cropInfo = path.substring(hashIndex + 1).split(",");
-    if (cropInfo.length !== 4) throw new Error("malformed url: " + path);
-    img.src = path.substring(0, hashIndex);
-  } else {
-    img.src = path;
+function parseFacePath(path) {
+  let splitIndex = path.indexOf("#");
+  if (splitIndex === -1) {
+    return {url:path};
   }
+  let url = path.substr(0, splitIndex);
+  let cropInfo = path.substr(splitIndex + 1).split(",");
+  if (cropInfo.length !== 4) throw new Error("malformed url: " + path);
+  let x = parseInt(cropInfo[0]);
+  let y = parseInt(cropInfo[1]);
+  let width = parseInt(cropInfo[2]);
+  let height = parseInt(cropInfo[3]);
+  if (isNaN(x - y - width - height)) throw new Error("malformed url: " + path);
+  return {url, x, y, width, height};
+}
+const LOADING = "<loading>";
+function preloadImagePath(path) {
+  let {url} = parseFacePath(path);
+  let size = imageUrlToSize[url];
+  if (size != null) return; // already loaded or loading.
+  imageUrlToSize[url] = LOADING;
+  // Let the host environment cache and deduplicate these.
+  var img = new Image();
+  img.src = url;
   img.addEventListener("load", function() {
-    if (cropInfo != null) {
-      var x = parseInt(cropInfo[0], 10);
-      var y = parseInt(cropInfo[1], 10);
-      var width = parseInt(cropInfo[2], 10);
-      var height = parseInt(cropInfo[3], 10);
-      var canvas = document.createElement('canvas');
-      canvas.width  = width;
-      canvas.height = height;
-      var context = canvas.getContext("2d");
-      context.drawImage(img, x, y, width, height, 0, 0, width, height);
-      facePathToUrlUrl[path] = 'url("'+canvas.toDataURL()+'")';
-    } else {
-      facePathToUrlUrl[path] = 'url("'+path+'")';
-    }
+    imageUrlToSize[url] = {
+      width: img.width,
+      height: img.height,
+    };
     checkForDoneLoading();
   });
+  // TODO: check for error.
 }
 function checkForDoneLoading() {
-  for (var key in facePathToUrlUrl) {
-    if (facePathToUrlUrl[key] === "") return; // not done yet
+  for (let url in imageUrlToSize) {
+    if (imageUrlToSize[url] === LOADING) return; // not done yet.
   }
   // all done loading
-  getObjects().forEach(render);
+  getObjects().forEach(object => render(object));
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
@@ -371,7 +371,7 @@ function bringSelectionToTop() {
   newPropses.forEach(function(newProps, i) {
     newProps.z = z + i + 1;
   });
-  renderAndMaybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection, true);
   fixFloatingThingZ();
 }
 
@@ -517,7 +517,7 @@ function getEffectiveSelection(objects) {
   }
   return {};
 }
-function renderAndMaybeCommitSelection(selection) {
+function renderAndMaybeCommitSelection(selection, isAnimated) {
   var objectsToRender = [];
   // render
   for (var id in selection) {
@@ -535,7 +535,7 @@ function renderAndMaybeCommitSelection(selection) {
     commitSelection(selection);
   }
   // now that we've possibly committed a temporary selection, we can render.
-  objectsToRender.forEach(render);
+  objectsToRender.forEach(object => render(object, isAnimated));
   renderOrder();
   resizeTableToFitEverything();
 
@@ -707,7 +707,7 @@ function flipOverSelection() {
       newProps.faceIndex = 0;
     }
   }
-  renderAndMaybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection, false);
   renderOrder();
 }
 function rollSelection() {
@@ -717,7 +717,7 @@ function rollSelection() {
     var newProps = selection[id];
     newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
   }
-  renderAndMaybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection, false);
   renderOrder();
 }
 function cancelMove() {
@@ -808,7 +808,7 @@ function shuffleSelection() {
     newPropsArray[otherIndex].y = tempY;
     newPropsArray[otherIndex].z = tempZ;
   }
-  renderAndMaybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection, true);
   renderOrder();
   resizeTableToFitEverything();
 }
@@ -845,7 +845,7 @@ function groupSelection() {
     newProps.x = medianNewProps.x;
     newProps.y = medianNewProps.y;
   }
-  renderAndMaybeCommitSelection(selection);
+  renderAndMaybeCommitSelection(selection, true);
   renderOrder();
   resizeTableToFitEverything();
 }
@@ -1223,7 +1223,7 @@ yourRoleDropdown.addEventListener("change", function() {
     myUser.role = role;
     renderUserList();
     // hide/show objects
-    getObjects().forEach(render);
+    getObjects().forEach(object => render(object));
     fixFloatingThingZ();
   }, 0);
 });
@@ -1279,11 +1279,10 @@ function render(object, isAnimated) {
   objectDiv.style.zIndex = z;
   if (object.faces.length > 0) {
     var facePath = object.faces[faceIndex];
-    var imageUrlUrl = facePathToUrlUrl[facePath];
-    if (imageUrlUrl !== "" && objectDiv.dataset.facePath !== facePath) {
-      objectDiv.dataset.facePath = facePath;
-      objectDiv.style.backgroundImage = imageUrlUrl;
-    }
+    let {url} = parseFacePath(facePath);
+    objectDiv.dataset.facePath = facePath;
+    objectDiv.style.backgroundImage = `url(${url})`;
+    renderSize(object, objectDiv, object.width, object.height);
   } else if (object.backgroundColor !== "") {
     objectDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
@@ -1362,11 +1361,26 @@ function renderExaminingObjects() {
     objectDiv.classList.add("animatedMovement");
     objectDiv.style.left = renderX + window.scrollX;
     objectDiv.style.top  = renderY + window.scrollY;
-    objectDiv.style.width  = renderWidth;
-    objectDiv.style.height = renderHeight;
+    renderSize(object, objectDiv, renderWidth, renderHeight);
     objectDiv.style.zIndex = maxZ + i + 3;
     var stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.style.display = "none";
+  }
+}
+function renderSize(object, objectDiv, renderWidth, renderHeight) {
+  objectDiv.style.width  = renderWidth;
+  objectDiv.style.height = renderHeight;
+  let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath);
+  if (x != null) {
+    let scaleX = renderWidth  / width;
+    let scaleY = renderHeight / height;
+    let backgroundSize = imageUrlToSize[url];
+    //objectDiv.style.backgroundRepeat = "no-repeat";
+    objectDiv.style.backgroundPosition = `-${x * scaleX}px -${y * scaleY}px`;
+    objectDiv.style.backgroundSize = `${backgroundSize.width * scaleX}px ${backgroundSize.height * scaleY}px`;
+  } else {
+    objectDiv.style.backgroundPosition = "";
+    objectDiv.style.backgroundSize = "";
   }
 }
 function renderOrder() {
