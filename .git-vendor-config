@@ -1,0 +1,16 @@
+# This is a git-vendor config file.
+# For details see https://github.com/thejoshwolfe/git-vendor/blob/main/README.md#reference
+
+dir=deps/git-vendor
+url=https://github.com/thejoshwolfe/git-vendor.git
+follow-branch=release
+commit=8cb379f5b77579bc900d8ef950702ea73c6d7d5f
+include=/git-vendor
+
+---
+
+dir=deps/gwp
+url=https://github.com/thejoshwolfe/gwp.git
+follow-branch=main
+commit=6dc230f65f0618626169623925d4bce6419146c7
+subdir=bin
