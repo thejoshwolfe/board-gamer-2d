@@ -1033,6 +1033,7 @@ function makeTemporaryObject(prototypeId, x, y, z) {
   object.faceIndex = 0;
   object.locked = false;
   registerObject(object);
+  render(object, false);
   return object;
 }
 
