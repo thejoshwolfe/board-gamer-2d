@@ -76,17 +76,21 @@ var imageUrlToSize = {
 };
 
 var gameDefinition;
-var objectDefinitionsById;
-var objectIndexesById;
+var database;
+var databaseById;
 var objectsById;
 var objectsWithSnapZones; // cache
 var hiderContainers; // cache
 var changeHistory;
 var futureChanges;
-function initGame(game, history) {
+function initGame(_database, game, history) {
+  database = _database;
+  databaseById = {};
+  database.forEach(function(closetObject) {
+    databaseById[closetObject.id] = closetObject;
+    if (closetObject.faces != null) closetObject.faces.forEach(preloadImagePath);
+  });
   gameDefinition = game;
-  objectDefinitionsById = {};
-  objectIndexesById = {};
   objectsById = {};
   objectsWithSnapZones = [];
   hiderContainers = [];
@@ -95,51 +99,16 @@ function initGame(game, history) {
   for (var i = 0; i < gameDefinition.objects.length; i++) {
     var rawDefinition = gameDefinition.objects[i];
     var id = rawDefinition.id;
-    if (id == null) id = autogenerateId(i);
-    objectDefinitionsById[id] = rawDefinition;
-    objectIndexesById[id] = i;
-    if (rawDefinition.prototype) continue;
+    if (id == null) throw new Error("game object has no id");
 
-    var objectDefinition = getObjectDefinition(id);
-    if (objectDefinition.faces != null) objectDefinition.faces.forEach(preloadImagePath);
-    var object = {
-      id: id,
-      x: objectDefinition.x,
-      y: objectDefinition.y,
-      z: objectDefinition.z || i,
-      width:  objectDefinition.width,
-      height: objectDefinition.height,
-      faces: objectDefinition.faces,
-      snapZones: objectDefinition.snapZones || [],
-      locked: !!objectDefinition.locked,
-      faceIndex: 0,
-    };
-    objectsById[id] = object;
-    if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
-    if (objectDefinition.visionWhitelist != null) hiderContainers.push(object);
-
-    tableDiv.insertAdjacentHTML("beforeend",
-      '<div id="object-'+id+'" data-id="'+id+'" class="gameObject" style="display:none;">' +
-        '<div id="stackHeight-'+id+'" class="stackHeight" style="display:none;"></div>' +
-      '</div>'
-    );
-    var objectDiv = getObjectDiv(object.id);
-    objectDiv.addEventListener("mousedown", onObjectMouseDown);
-    objectDiv.addEventListener("mousemove", onObjectMouseMove);
-    objectDiv.addEventListener("mouseout",  onObjectMouseOut);
-    if (objectDefinition.backgroundColor != null) {
-      // add a background div
-      tableDiv.insertAdjacentHTML("beforeend",
-        '<div id="background-'+id+'" class="backgroundObject" style="display:none;"></div>'
-      );
-    }
-  }
-  // reassign all the z's to be unique
-  var objects = getObjects();
-  objects.sort(compareZ);
-  objects.forEach(function(object, i) {
+    var object = makeObject(id, rawDefinition.prototype);
+    object.x = rawDefinition.x;
+    object.y = rawDefinition.y;
     object.z = i;
-  });
+    object.faceIndex = rawDefinition.faceIndex || 0;
+    object.locked = !!rawDefinition.locked;
+    registerObject(object);
+  }
   fixFloatingThingZ();
 
   // replay history
@@ -150,36 +119,6 @@ function initGame(game, history) {
   document.getElementById("roomCodeSpan").textContent = roomCode;
 
   checkForDoneLoading();
-}
-function getObjectDefinition(id) {
-  // resolve prototypes
-  var result = {};
-  recurse(id, 0);
-  return result;
-
-  function recurse(id, depth) {
-    var definition = objectDefinitionsById[id];
-    for (var property in definition) {
-      if (property === "prototypes") continue; // special handling
-      if (property === "prototype" && depth !== 0) continue;  // don't inherit this property
-      if (property in result) continue; // shadowed
-      var value = definition[property];
-      if (property === "front") {
-        if (result.faces == null) result.faces = [];
-        result.faces[0] = value;
-      } else if (property === "back") {
-        if (result.faces == null) result.faces = [];
-        result.faces[1] = value;
-      } else {
-        result[property] = value;
-      }
-    }
-    if (definition.prototypes != null) {
-      definition.prototypes.forEach(function(id) {
-        recurse(id, depth + 1);
-      });
-    }
-  }
 }
 function resolveFace(face) {
   if (face === "front") return 0;
@@ -229,21 +168,82 @@ function checkForDoneLoading() {
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
-function autogenerateId(i) {
-  return "object-" + i;
+function makeObject(id, prototypeId) {
+  // TODO: hash lookup
+  var objectDefinition = databaseById[prototypeId];
+  if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
+  return {
+    id: id,
+    prototype: prototypeId,
+    temporary: false,
+    x: null,
+    y: null,
+    z: null,
+    faceIndex: null,
+    locked: null,
+    width:  objectDefinition.width  || error(),
+    height: objectDefinition.height || error(),
+    faces: objectDefinition.faces || [],
+    snapZones: objectDefinition.snapZones || [],
+    visionWhitelist: objectDefinition.visionWhitelist || [],
+    hideFaces: objectDefinition.hideFaces || [],
+    backgroundColor: objectDefinition.backgroundColor || "",
+    labelPlayerName: objectDefinition.labelPlayerName || "",
+  };
+  function error() {
+    throw new Error();
+  }
 }
-function getIdFromIndex(i) {
-  var id = gameDefinition.objects[i].id;
-  if (id == null) id = autogenerateId(i);
-  return id;
+function registerObject(object) {
+  objectsById[object.id] = object;
+  if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
+  if (object.visionWhitelist.length > 0) hiderContainers.push(object);
+
+  tableDiv.insertAdjacentHTML("beforeend",
+    '<div id="object-'+object.id+'" data-id="'+object.id+'" class="gameObject" style="display:none;">' +
+      '<div id="stackHeight-'+object.id+'" class="stackHeight" style="display:none;"></div>' +
+    '</div>'
+  );
+  var objectDiv = getObjectDiv(object.id);
+  objectDiv.addEventListener("mousedown", onObjectMouseDown);
+  objectDiv.addEventListener("mousemove", onObjectMouseMove);
+  objectDiv.addEventListener("mouseout",  onObjectMouseOut);
+  if (object.backgroundColor !== "") {
+    // add a background div
+    tableDiv.insertAdjacentHTML("beforeend",
+      '<div id="background-'+object.id+'" class="backgroundObject" style="display:none;"></div>'
+    );
+  }
+}
+function deleteObject(id) {
+  if (hoverObject === objectsById[id]) hoverObject = null;
+  delete objectsById[id];
+  deleteObjectFromArray(objectsWithSnapZones, id);
+  deleteObjectFromArray(hiderContainers, id);
+  delete selectedObjectIdToNewProps[id];
+  deleteDiv(getObjectDiv(id));
+  var backgroundDiv = getBackgroundDiv(id);
+  if (backgroundDiv != null) deleteDiv(backgroundDiv);
+}
+function deleteObjectFromArray(array, id) {
+  for (var i = 0; i < array.length; i++) {
+    if (array[i].id === id) {
+      array.splice(i, 1);
+      break;
+    }
+  }
+}
+function deleteDiv(div) {
+  if (hoverDiv === div) hoverDiv = null;
+  tableDiv.removeChild(div);
 }
 
 function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
+  database = null;
+  databaseById = null;
   gameDefinition = null;
-  objectDefinitionsById = null;
-  objectIndexesById = null;
   objectsById = null;
   usersById = {};
   selectedObjectIdToNewProps = {};
@@ -265,9 +265,8 @@ function fixFloatingThingZ() {
   var z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
   hiderContainers.forEach(function(object) {
-    var objectDefinition = getObjectDefinition(object.id);
     var objectDiv = getObjectDiv(object.id);
-    if (objectDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+    if (object.visionWhitelist.indexOf(myUser.role) === -1) {
       // blocked
       objectDiv.style.zIndex = z++;
     } else {
@@ -275,8 +274,9 @@ function fixFloatingThingZ() {
       objectDiv.style.zIndex = object.z;
     }
   });
-  document.getElementById("roomInfoDiv").style.zIndex = z++;
+  document.getElementById("topRightDiv").style.zIndex = z++;
   document.getElementById("helpDiv").style.zIndex = z++;
+  document.getElementById("closetDiv").style.zIndex = z++;
   modalMaskDiv.style.zIndex = z++;
   editUserDiv.style.zIndex = z++;
 }
@@ -299,6 +299,7 @@ var examiningMode = EXAMINE_NONE;
 var examiningObjectsById = {};
 
 var hoverObject;
+var hoverDiv;
 var lastMouseDragX;
 var lastMouseDragY;
 
@@ -311,7 +312,7 @@ function onObjectMouseDown(event) {
   if (examiningMode !== EXAMINE_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
-  if (object.locked) return; // click thee behind me, satan
+  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
 
@@ -340,6 +341,24 @@ function onObjectMouseDown(event) {
   lastMouseDragY = eventToMouseY(event, tableDiv);
   if (isGKeyDown) startAccordion();
 
+  bringSelectionToTop();
+}
+function onObjectMouseMove(event) {
+  if (draggingMode != DRAG_NONE) return;
+  var objectDiv = this;
+  var object = objectsById[objectDiv.dataset.id];
+  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
+  setHoverObject(object);
+}
+function onObjectMouseOut(event) {
+  var objectDiv = this;
+  var object = objectsById[objectDiv.dataset.id];
+  if (hoverObject === object) {
+    setHoverObject(null);
+  }
+}
+
+function bringSelectionToTop() {
   // bring selection to top
   // effectively do a stable sort.
   var selection = selectedObjectIdToNewProps;
@@ -354,20 +373,6 @@ function onObjectMouseDown(event) {
   });
   renderAndMaybeCommitSelection(selection, true);
   fixFloatingThingZ();
-}
-function onObjectMouseMove(event) {
-  if (draggingMode != DRAG_NONE) return;
-  var objectDiv = this;
-  var object = objectsById[objectDiv.dataset.id];
-  if (object.locked) return;
-  setHoverObject(object);
-}
-function onObjectMouseOut(event) {
-  var objectDiv = this;
-  var object = objectsById[objectDiv.dataset.id];
-  if (hoverObject === object) {
-    setHoverObject(null);
-  }
 }
 
 tableDiv.addEventListener("mousedown", function(event) {
@@ -397,7 +402,7 @@ document.addEventListener("mousemove", function(event) {
       if (minY > maxY) { var tmp = maxY; maxY = minY; minY = tmp; }
       var newSelectedObjects = [];
       getObjects().forEach(function(object) {
-        if (object.locked) return;
+        if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
         if (object.x > maxX) return;
         if (object.y > maxY) return;
         if (object.x + object.width  < minX) return;
@@ -445,7 +450,7 @@ document.addEventListener("mouseup", function(event) {
     renderSelectionRectangle();
   } else if (draggingMode === DRAG_MOVE_SELECTION) {
     draggingMode = DRAG_NONE;
-    // snap everything really quick
+    // snap to grid
     for (var id in selectedObjectIdToNewProps) {
       var object = objectsById[id];
       var newProps = selectedObjectIdToNewProps[id];
@@ -461,13 +466,14 @@ document.addEventListener("mouseup", function(event) {
 
 function setHoverObject(object) {
   if (hoverObject == object) return;
-  if (hoverObject != null) {
-    getObjectDiv(hoverObject.id).classList.remove("hoverSelect");
-  }
   hoverObject = object;
-  if (hoverObject != null) {
-    getObjectDiv(hoverObject.id).classList.add("hoverSelect");
-  }
+  setHoverDiv(hoverObject != null ? getObjectDiv(hoverObject.id) : null);
+}
+function setHoverDiv(div) {
+  if (hoverDiv == div) return;
+  if (hoverDiv != null) hoverDiv.classList.remove("hoverSelect");
+  hoverDiv = div;
+  if (hoverDiv != null) hoverDiv.classList.add("hoverSelect");
 }
 function setSelectedObjects(objects) {
   for (var id in selectedObjectIdToNewProps) {
@@ -542,25 +548,36 @@ function commitSelection(selection) {
   for (var id in selection) {
     var object = objectsById[id];
     var newProps = selection[id];
-    if (!(object.x === newProps.x &&
-          object.y === newProps.y &&
-          object.z === newProps.z &&
-          object.faceIndex === newProps.faceIndex)) {
-      move.push(
-        objectIndexesById[object.id],
-        object.x,
-        object.y,
-        object.z,
-        object.faceIndex,
-        newProps.x,
-        newProps.y,
-        newProps.z,
-        newProps.faceIndex);
-      // anticipate
-      object.x = newProps.x;
-      object.y = newProps.y;
-      object.z = newProps.z;
-      object.faceIndex = newProps.faceIndex;
+    if (object.x         !== newProps.x         ||
+        object.y         !== newProps.y         ||
+        object.z         !== newProps.z         ||
+        object.faceIndex !== newProps.faceIndex ||
+        object.temporary) {
+      if (object.temporary) {
+        object.x = newProps.x;
+        object.y = newProps.y;
+        object.z = newProps.z;
+        object.faceIndex = newProps.faceIndex;
+        object.temporary = false;
+        move.push("c"); // create
+        pushObjectProps(move, object);
+      } else {
+        move.push("m", // move
+          object.id,
+          object.x,
+          object.y,
+          object.z,
+          object.faceIndex,
+          newProps.x,
+          newProps.y,
+          newProps.z,
+          newProps.faceIndex);
+        // anticipate
+        object.x = newProps.x;
+        object.y = newProps.y;
+        object.z = newProps.z;
+        object.faceIndex = newProps.faceIndex;
+      }
     }
   }
   if (move.length <= 1) return;
@@ -570,6 +587,26 @@ function commitSelection(selection) {
   };
   sendMessage(message);
   pushChangeToHistory(move);
+}
+function pushObjectProps(move, object) {
+  move.push(
+    object.id,
+    object.prototype,
+    object.x,
+    object.y,
+    object.z,
+    object.faceIndex);
+}
+var objectPropCount = 6;
+function consumeObjectProps(move, i) {
+  var    id              = move[i++];
+  var    prototypeId     = move[i++];
+  var object = makeObject(id, prototypeId);
+  object.x               = move[i++];
+  object.y               = move[i++];
+  object.z               = move[i++];
+  object.faceIndex       = move[i++];
+  return object;
 }
 
 var SHIFT = 1;
@@ -605,6 +642,9 @@ document.addEventListener("keydown", function(event) {
       if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
       if (modifierMask === 0 && draggingMode === DRAG_MOVE_SELECTION) { cancelMove(); break; }
       if (modifierMask === 0 && draggingMode === DRAG_NONE)           { setSelectedObjects([]); break; }
+      return;
+    case 46: // Delete
+      if (modifierMask === 0) { deleteSelection(); break; }
       return;
     case "Z".charCodeAt(0):
       if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
@@ -684,14 +724,52 @@ function cancelMove() {
   var selection = selectedObjectIdToNewProps;
   for (var id in selection) {
     var object = objectsById[id];
-    var newProps = selection[id];
-    newProps.x = object.x;
-    newProps.y = object.y;
-    newProps.z = object.z;
-    newProps.faceIndex = object.faceIndex;
-    render(object, true);
+    if (object.temporary) {
+      deleteObject(id);
+    } else {
+      var newProps = selection[id];
+      newProps.x = object.x;
+      newProps.y = object.y;
+      newProps.z = object.z;
+      newProps.faceIndex = object.faceIndex;
+      render(object, true);
+    }
   }
   draggingMode = DRAG_NONE;
+  renderOrder();
+  resizeTableToFitEverything();
+  fixFloatingThingZ();
+}
+function deleteSelection() {
+  var selection = getEffectiveSelection();
+  var objects = [];
+  for (var id in selection) {
+    objects.push(objectsById[id]);
+  }
+  var partialDeletion = false;
+  var numberModifier = consumeNumberModifier();
+  if (numberModifier != null && numberModifier < objects.length) {
+    // only delete the top N objects
+    objects.sort(compareZ);
+    objects.splice(0, objects.length - numberModifier);
+    partialDeletion = true;
+  }
+
+  var move = [];
+  objects.forEach(function(object) {
+    if (!object.temporary) {
+      move.push("d"); // delete
+      pushObjectProps(move, object);
+    }
+    deleteObject(object.id);
+  });
+  if (move.length > 0) {
+    move.unshift(myUser.id);
+    sendMessage({cmd:"makeAMove", args:move});
+    pushChangeToHistory(move);
+  }
+
+  if (draggingMode === DRAG_MOVE_SELECTION && !partialDeletion) draggingMode = DRAG_NONE;
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
@@ -798,7 +876,7 @@ function examineMulti() {
     var hoverHeight = hoverObject.height;
     selection = {};
     getObjects().forEach(function(object) {
-      if (object.locked) return; // don't look at me
+      if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
       if (object.x >= hoverX   + hoverWidth)    return;
       if (object.y >= hoverY   + hoverHeight)   return;
       if (hoverX   >= object.x + object.width)  return;
@@ -864,6 +942,101 @@ function renderHelp() {
   }
 }
 
+var showCloset = false;
+
+var closetShowHideButton = document.getElementById("closetShowHideButton");
+var closetUl = document.getElementById("closetUl");
+closetShowHideButton.addEventListener("click", function(event) {
+  event.preventDefault();
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  if (showCloset) {
+    closetUl.innerHTML = "";
+    showCloset = false;
+    return;
+  }
+  showCloset = true;
+  renderCloset();
+});
+function renderCloset() {
+  closetUl.innerHTML = database.filter(function(closetObject) {
+    // TODO: show groups with items
+    return closetObject.closetName != null;
+  }).map(function(closetObject) {
+    var id        = closetObject.id;
+    var name      = closetObject.closetName;
+    var thumbnail = closetObject.thumbnail       || closetObject.faces[0];
+    var width     = closetObject.thumbnailWidth  || 25;
+    var height    = closetObject.thumbnailHeight || 25;
+    return '<li data-id="'+id+'"><img src="'+thumbnail+'" width='+width+' height='+height+'>'+name+'</li>';
+  }).join("");
+  var fakeArray = closetUl.getElementsByTagName("li");
+  for (var i = 0; i < fakeArray.length; i++) {
+    var li = fakeArray[i];
+    li.addEventListener("mousedown", onClosetObjectMouseDown);
+    li.addEventListener("mousemove", onClosetObjectMouseMove);
+    li.addEventListener("mouseout",  onClosetObjectMouseOut);
+  }
+}
+function onClosetObjectMouseDown(event) {
+  if (event.button !== 0) return;
+  if (examiningMode !== EXAMINE_NONE) return;
+  event.preventDefault();
+  event.stopPropagation();
+  var x = this.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
+  var y = this.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
+  var closetId = this.dataset.id;
+  var closetObject = databaseById[closetId];
+  var prototypeIds = closetObject.items;
+  if (prototypeIds == null) {
+    prototypeIds = [closetObject.id];
+  }
+
+  // create temporary objects
+  var numberModifier = consumeNumberModifier();
+  if (numberModifier == null) numberModifier = 1;
+  var stackOfObjects = [];
+  var z = findMaxZ();
+  z++;
+  for (var i = 0; i < numberModifier; i++) {
+    prototypeIds.forEach(function(prototypeId) {
+      stackOfObjects.push(makeTemporaryObject(prototypeId, x, y, z++));
+    });
+  }
+  setSelectedObjects(stackOfObjects);
+
+  // begin drag
+  draggingMode = DRAG_MOVE_SELECTION;
+  lastMouseDragX = eventToMouseX(event, tableDiv);
+  lastMouseDragY = eventToMouseY(event, tableDiv);
+
+  // bring selection to top
+  bringSelectionToTop();
+}
+function onClosetObjectMouseMove(event) {
+  if (draggingMode != DRAG_NONE) return;
+  setHoverDiv(this);
+}
+function onClosetObjectMouseOut(event) {
+  if (hoverDiv === this) {
+    setHoverDiv(null);
+  }
+}
+
+function makeTemporaryObject(prototypeId, x, y, z) {
+  var id = generateRandomId();
+  var object = makeObject(id, prototypeId);
+  object.temporary = true;
+  object.x = x;
+  object.y = y;
+  object.z = z;
+  object.faceIndex = 0;
+  object.locked = false;
+  registerObject(object);
+  render(object, false);
+  return object;
+}
+
 function undo() { undoOrRedo(changeHistory, futureChanges); }
 function redo() { undoOrRedo(futureChanges, changeHistory); }
 function undoOrRedo(thePast, theFuture) {
@@ -878,37 +1051,58 @@ function reverseChange(move) {
   var i = 0;
   move[i++]; // userId
   while (i < move.length) {
-    var object = objectsById[getIdFromIndex(move[i++])];
-    var fromX         =      move[i++];
-    var fromY         =      move[i++];
-    var fromZ         =      move[i++];
-    var fromFaceIndex =      move[i++];
-    var   toX         =      move[i++];
-    var   toY         =      move[i++];
-    var   toZ         =      move[i++];
-    var   toFaceIndex =      move[i++];
-    object.x         = fromX;
-    object.y         = fromY;
-    object.z         = fromZ;
-    object.faceIndex = fromFaceIndex;
-    var newProps = selectedObjectIdToNewProps[object.id];
-    if (newProps != null) {
-      newProps.x         = object.x;
-      newProps.y         = object.y;
-      newProps.z         = object.z;
-      newProps.faceIndex = object.faceIndex;
+    var actionCode = move[i++];
+    switch (actionCode) {
+      case "c": // create -> delete
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
+        newMove.push("d"); // delete
+        pushObjectProps(newMove, object);
+        deleteObject(object.id);
+        break;
+      case "d": // delete -> create
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
+        newMove.push("c"); // create
+        pushObjectProps(newMove, object);
+        registerObject(object);
+        render(object, true);
+        break;
+      case "m": // move -> move
+        var object = objectsById[move[i++]];
+        var fromX         =      move[i++];
+        var fromY         =      move[i++];
+        var fromZ         =      move[i++];
+        var fromFaceIndex =      move[i++];
+        var   toX         =      move[i++];
+        var   toY         =      move[i++];
+        var   toZ         =      move[i++];
+        var   toFaceIndex =      move[i++];
+        object.x         = fromX;
+        object.y         = fromY;
+        object.z         = fromZ;
+        object.faceIndex = fromFaceIndex;
+        var newProps = selectedObjectIdToNewProps[object.id];
+        if (newProps != null) {
+          newProps.x         = object.x;
+          newProps.y         = object.y;
+          newProps.z         = object.z;
+          newProps.faceIndex = object.faceIndex;
+        }
+        newMove.push("m", // move
+          object.id,
+          toX,
+          toY,
+          toZ,
+          toFaceIndex,
+          fromX,
+          fromY,
+          fromZ,
+          fromFaceIndex);
+        render(object, true);
+        break;
+      default: throw asdf();
     }
-    newMove.push(
-      objectIndexesById[object.id],
-      toX,
-      toY,
-      toZ,
-      toFaceIndex,
-      fromX,
-      fromY,
-      fromZ,
-      fromFaceIndex);
-    render(object, true);
   }
   renderOrder();
   resizeTableToFitEverything();
@@ -935,14 +1129,13 @@ function renderUserList() {
   }).join("");
 
   getObjects().forEach(function(object) {
-    var objectDefinition = getObjectDefinition(object.id);
-    if (objectDefinition.labelPlayerName == null) return;
+    if (object.labelPlayerName === "") return;
     var userName = null;
-    if (objectDefinition.labelPlayerName === myUser.role) {
+    if (object.labelPlayerName === myUser.role) {
       userName = "You";
     } else {
       for (var i = 0; i < userIds.length; i++) {
-        if (usersById[userIds[i]].role === objectDefinition.labelPlayerName) {
+        if (usersById[userIds[i]].role === object.labelPlayerName) {
           userName = usersById[userIds[i]].userName;
           break;
         }
@@ -950,7 +1143,7 @@ function renderUserList() {
     }
     var roleName = null;
     for (var i = 0; i < gameDefinition.roles.length; i++) {
-      if (gameDefinition.roles[i].id === objectDefinition.labelPlayerName) {
+      if (gameDefinition.roles[i].id === object.labelPlayerName) {
         roleName = gameDefinition.roles[i].name;
         break;
       }
@@ -1037,9 +1230,15 @@ yourRoleDropdown.addEventListener("change", function() {
 });
 document.getElementById("closeEditUserButton").addEventListener("click", closeDialog);
 
+var moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox");
+moveLockedObjectsModeCheckbox.addEventListener("click", function() {
+  // Prevent keyboard focus from interfering with hotkeys.
+  moveLockedObjectsModeCheckbox.blur();
+});
+
+
 function render(object, isAnimated) {
   if (object.id in examiningObjectsById) return; // different handling for this
-  var objectDefinition = getObjectDefinition(object.id);
   var x = object.x;
   var y = object.y;
   var z = object.z;
@@ -1051,17 +1250,16 @@ function render(object, isAnimated) {
     z = newProps.z;
     faceIndex = newProps.faceIndex;
   }
-  if (objectDefinition.locked) {
+  if (object.locked) {
     z = 0;
   } else {
     for (var i = 0; i < hiderContainers.length; i++) {
       var hiderContainer = hiderContainers[i];
       if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
-        var hiderContainerDefinition = getObjectDefinition(hiderContainer.id);
-        if (hiderContainerDefinition.visionWhitelist.indexOf(myUser.role) === -1) {
+        if (hiderContainer.visionWhitelist.indexOf(myUser.role) === -1) {
           // blocked
-          var forbiddenFaces = hiderContainerDefinition.hideFaces.map(resolveFace);
+          var forbiddenFaces = hiderContainer.hideFaces.map(resolveFace);
           var betterFaceIndex = -1;
           for (var j = 0; j < object.faces.length; j++) {
             var tryThisIndex = (faceIndex + j) % object.faces.length;
@@ -1084,17 +1282,17 @@ function render(object, isAnimated) {
   }
   objectDiv.style.left = x + "px";
   objectDiv.style.top  = y + "px";
-  objectDiv.style.width  = object.width;
-  objectDiv.style.height = object.height;
+  objectDiv.style.width  = object.width  + "px";
+  objectDiv.style.height = object.height + "px";
   objectDiv.style.zIndex = z;
-  if (object.faces != null) {
+  if (object.faces.length > 0) {
     var facePath = object.faces[faceIndex];
     let {url} = parseFacePath(facePath);
     objectDiv.dataset.facePath = facePath;
     objectDiv.style.backgroundImage = `url(${url})`;
     renderSize(object, objectDiv, object.width, object.height);
-  } else if (objectDefinition.backgroundColor != null) {
-    objectDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "0.4");
+  } else if (object.backgroundColor !== "") {
+    objectDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
     objectDiv.style.borderStyle = "solid";
@@ -1107,7 +1305,7 @@ function render(object, isAnimated) {
   }
   objectDiv.style.display = "block";
 
-  if (objectDefinition.backgroundColor != null) {
+  if (object.backgroundColor !== "") {
     var backgroundDiv = getBackgroundDiv(object.id);
     if (isAnimated) {
       backgroundDiv.classList.add("animatedMovement");
@@ -1116,11 +1314,11 @@ function render(object, isAnimated) {
     }
     backgroundDiv.style.left = x + "px";
     backgroundDiv.style.top = y + "px";
-    backgroundDiv.style.width  = object.width;
-    backgroundDiv.style.height = object.height;
+    backgroundDiv.style.width  = object.width  + "px";
+    backgroundDiv.style.height = object.height + "px";
     backgroundDiv.style.zIndex = 0;
     backgroundDiv.style.display = "block";
-    backgroundDiv.style.backgroundColor = objectDefinition.backgroundColor.replace(/alpha/, "1.0");
+    backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "1.0");
   }
 }
 function renderExaminingObjects() {
@@ -1169,8 +1367,8 @@ function renderExaminingObjects() {
     var renderY = (windowHeight - renderHeight) / 2;
     var objectDiv = getObjectDiv(object.id);
     objectDiv.classList.add("animatedMovement");
-    objectDiv.style.left = renderX + window.scrollX;
-    objectDiv.style.top  = renderY + window.scrollY;
+    objectDiv.style.left = (renderX + window.scrollX) + "px";
+    objectDiv.style.top  = (renderY + window.scrollY) + "px";
     renderSize(object, objectDiv, renderWidth, renderHeight);
     objectDiv.style.zIndex = maxZ + i + 3;
     var stackHeightDiv = getStackHeightDiv(object.id);
@@ -1178,8 +1376,8 @@ function renderExaminingObjects() {
   }
 }
 function renderSize(object, objectDiv, renderWidth, renderHeight) {
-  objectDiv.style.width  = renderWidth;
-  objectDiv.style.height = renderHeight;
+  objectDiv.style.width  = renderWidth  + "px";
+  objectDiv.style.height = renderHeight + "px";
   let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath);
   if (x != null) {
     let scaleX = renderWidth  / width;
@@ -1198,8 +1396,7 @@ function renderOrder() {
   getObjects().forEach(function(object) {
     var newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
-    var objectDefinition = getObjectDefinition(object.id);
-    if (objectDefinition.labelPlayerName != null) {
+    if (object.labelPlayerName !== "") {
       // not really a stack height
       return;
     }
@@ -1288,24 +1485,24 @@ function snapToSnapZones(object, newProps) {
   objectsWithSnapZones.sort(compareZ);
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
-    var containerObjectDefinition = getObjectDefinition(containerObject.id);
-    for (var j = 0; j < containerObjectDefinition.snapZones.length; j++) {
-      var snapZoneDefinition = containerObjectDefinition.snapZones[j];
+    var containerProps = selectedObjectIdToNewProps[containerObject.id] || containerObject;
+    for (var j = 0; j < containerObject.snapZones.length; j++) {
+      var snapZoneDefinition = containerObject.snapZones[j];
       var snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
       var snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
-      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObjectDefinition.width;
-      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObjectDefinition.height;
+      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObject.width;
+      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObject.height;
       var cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
       var cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
       if (cellWidth  < object.width)  continue; // doesn't fit in the zone
       if (cellHeight < object.height) continue; // doesn't fit in the zone
-      if (newProps.x >= containerObject.x + snapZoneX + snapZoneWidth)  continue; // way off right
-      if (newProps.y >= containerObject.y + snapZoneY + snapZoneHeight) continue; // way off bottom
-      if (newProps.x + object.width  <= containerObject.x + snapZoneX)  continue; // way off left
-      if (newProps.y + object.height <= containerObject.y + snapZoneY)  continue; // way off top
+      if (newProps.x >= containerProps.x + snapZoneX + snapZoneWidth)  continue; // way off right
+      if (newProps.y >= containerProps.y + snapZoneY + snapZoneHeight) continue; // way off bottom
+      if (newProps.x + object.width  <= containerProps.x + snapZoneX)  continue; // way off left
+      if (newProps.y + object.height <= containerProps.y + snapZoneY)  continue; // way off top
       // this is the zone for us
-      var relativeCenterX = newProps.x + object.width /2 - (containerObject.x + snapZoneX);
-      var relativeCenterY = newProps.y + object.height/2 - (containerObject.y + snapZoneY);
+      var relativeCenterX = newProps.x + object.width /2 - (containerProps.x + snapZoneX);
+      var relativeCenterY = newProps.y + object.height/2 - (containerProps.y + snapZoneY);
       var modX = euclideanMod(relativeCenterX, cellWidth);
       var modY = euclideanMod(relativeCenterY, cellHeight);
       var divX = Math.floor(relativeCenterX / cellWidth);
@@ -1325,8 +1522,8 @@ function snapToSnapZones(object, newProps) {
           inBoundsY = true;
         }
       }
-      if (inBoundsY) newProps.x = divX * cellWidth  + newModX - object.width /2 + containerObject.x + snapZoneX;
-      if (inBoundsX) newProps.y = divY * cellHeight + newModY - object.height/2 + containerObject.y + snapZoneY;
+      if (inBoundsY) newProps.x = divX * cellWidth  + newModX - object.width /2 + containerProps.x + snapZoneX;
+      if (inBoundsX) newProps.y = divY * cellHeight + newModY - object.height/2 + containerProps.y + snapZoneY;
       return true;
     }
   }
@@ -1421,7 +1618,7 @@ function connectToServer() {
           message.args.users.forEach(function(otherUser) {
             usersById[otherUser.id] = otherUser;
           });
-          initGame(message.args.game, message.args.history);
+          initGame(message.args.database, message.args.game, message.args.history);
           renderUserList();
         } else throw asdf;
         break;
@@ -1482,27 +1679,44 @@ function makeAMove(move, shouldRender) {
   var userId = move[i++];
   if (userId === myUser.id) return;
   while (i < move.length) {
-    var object = objectsById[getIdFromIndex(move[i++])];
-    var fromX         =      move[i++];
-    var fromY         =      move[i++];
-    var fromZ         =      move[i++];
-    var fromFaceIndex =      move[i++];
-    var   toX         =      move[i++];
-    var   toY         =      move[i++];
-    var   toZ         =      move[i++];
-    var   toFaceIndex =      move[i++];
-    object.x = toX;
-    object.y = toY;
-    object.z = toZ;
-    object.faceIndex = toFaceIndex;
-    var newProps = selectedObjectIdToNewProps[object.id];
-    if (newProps != null) {
-      newProps.x = toX;
-      newProps.y = toY;
-      newProps.z = toZ;
-      newProps.faceIndex = toFaceIndex;
+    var actionCode = move[i++];
+    switch (actionCode) {
+      case "c": // create
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
+        registerObject(object);
+        if (shouldRender) objectsToRender.push(object);
+        break;
+      case "d":
+        var object = consumeObjectProps(move, i);
+        i += objectPropCount;
+        deleteObject(object.id);
+        break;
+      case "m": // move
+        var object = objectsById[move[i++]];
+        var fromX         =  move[i++];
+        var fromY         =  move[i++];
+        var fromZ         =  move[i++];
+        var fromFaceIndex =  move[i++];
+        var   toX         =  move[i++];
+        var   toY         =  move[i++];
+        var   toZ         =  move[i++];
+        var   toFaceIndex =  move[i++];
+        object.x = toX;
+        object.y = toY;
+        object.z = toZ;
+        object.faceIndex = toFaceIndex;
+        var newProps = selectedObjectIdToNewProps[object.id];
+        if (newProps != null) {
+          newProps.x = toX;
+          newProps.y = toY;
+          newProps.z = toZ;
+          newProps.faceIndex = toFaceIndex;
+        }
+        if (shouldRender) objectsToRender.push(object);
+        break;
+      default: throw asdf();
     }
-    if (shouldRender) objectsToRender.push(object);
   }
 
   if (shouldRender) {
@@ -1548,6 +1762,20 @@ function clamp(n, min, max) {
   if (n < min) return min;
   if (n > max) return max;
   return n;
+}
+
+function undefineNull(key, value) {
+  if (value == null) return undefined;
+  return value;
+}
+
+function httpGet(url, cb) {
+  var request = new XMLHttpRequest();
+  request.addEventListener("load", function() {
+    cb(request.responseText);
+  });
+  request.open("GET", url);
+  request.send();
 }
 
 setScreenMode(SCREEN_MODE_LOGIN);
