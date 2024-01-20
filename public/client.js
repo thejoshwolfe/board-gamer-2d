@@ -1485,6 +1485,7 @@ function snapToSnapZones(object, newProps) {
   objectsWithSnapZones.sort(compareZ);
   for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     var containerObject = objectsWithSnapZones[i];
+    var containerProps = selectedObjectIdToNewProps[containerObject.id] || containerObject;
     for (var j = 0; j < containerObject.snapZones.length; j++) {
       var snapZoneDefinition = containerObject.snapZones[j];
       var snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
@@ -1495,13 +1496,13 @@ function snapToSnapZones(object, newProps) {
       var cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
       if (cellWidth  < object.width)  continue; // doesn't fit in the zone
       if (cellHeight < object.height) continue; // doesn't fit in the zone
-      if (newProps.x >= containerObject.x + snapZoneX + snapZoneWidth)  continue; // way off right
-      if (newProps.y >= containerObject.y + snapZoneY + snapZoneHeight) continue; // way off bottom
-      if (newProps.x + object.width  <= containerObject.x + snapZoneX)  continue; // way off left
-      if (newProps.y + object.height <= containerObject.y + snapZoneY)  continue; // way off top
+      if (newProps.x >= containerProps.x + snapZoneX + snapZoneWidth)  continue; // way off right
+      if (newProps.y >= containerProps.y + snapZoneY + snapZoneHeight) continue; // way off bottom
+      if (newProps.x + object.width  <= containerProps.x + snapZoneX)  continue; // way off left
+      if (newProps.y + object.height <= containerProps.y + snapZoneY)  continue; // way off top
       // this is the zone for us
-      var relativeCenterX = newProps.x + object.width /2 - (containerObject.x + snapZoneX);
-      var relativeCenterY = newProps.y + object.height/2 - (containerObject.y + snapZoneY);
+      var relativeCenterX = newProps.x + object.width /2 - (containerProps.x + snapZoneX);
+      var relativeCenterY = newProps.y + object.height/2 - (containerProps.y + snapZoneY);
       var modX = euclideanMod(relativeCenterX, cellWidth);
       var modY = euclideanMod(relativeCenterY, cellHeight);
       var divX = Math.floor(relativeCenterX / cellWidth);
@@ -1521,8 +1522,8 @@ function snapToSnapZones(object, newProps) {
           inBoundsY = true;
         }
       }
-      if (inBoundsY) newProps.x = divX * cellWidth  + newModX - object.width /2 + containerObject.x + snapZoneX;
-      if (inBoundsX) newProps.y = divY * cellHeight + newModY - object.height/2 + containerObject.y + snapZoneY;
+      if (inBoundsY) newProps.x = divX * cellWidth  + newModX - object.width /2 + containerProps.x + snapZoneX;
+      if (inBoundsX) newProps.y = divY * cellHeight + newModY - object.height/2 + containerProps.y + snapZoneY;
       return true;
     }
   }
