@@ -1,43 +1,50 @@
 
-var roomCode = null;
-var myUser;
+let roomCode: string | null = null;
+let myUser: {
+  id: string,
+  userName: string,
+  role: string,
+} | null = null;
 
-var SCREEN_MODE_DISCONNECTED = 0;
-var SCREEN_MODE_LOGIN = 1;
-var SCREEN_MODE_WAITING_FOR_SERVER_CONNECT = 2;
-var SCREEN_MODE_WAITING_FOR_CREATE_ROOM = 3;
-var SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION = 4;
-var SCREEN_MODE_PLAY = 5;
-var screenMode = SCREEN_MODE_LOGIN;
+const SCREEN_MODE_DISCONNECTED = 0;
+const SCREEN_MODE_LOGIN = 1;
+const SCREEN_MODE_WAITING_FOR_SERVER_CONNECT = 2;
+const SCREEN_MODE_WAITING_FOR_CREATE_ROOM = 3;
+const SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION = 4;
+const SCREEN_MODE_PLAY = 5;
+let screenMode = SCREEN_MODE_LOGIN;
 
-document.getElementById("createRoomButton").addEventListener("click", function() {
+const createRoomButton = document.getElementById("createRoomButton") as HTMLInputElement;
+createRoomButton.addEventListener("click", function() {
   roomCode = null;
   connectToServer();
 });
-document.getElementById("roomCodeTextbox").addEventListener("keydown", function(event) {
+const roomCodeTextbox = document.getElementById("roomCodeTextbox") as HTMLInputElement;
+roomCodeTextbox.addEventListener("keydown", function(event) {
   event.stopPropagation();
   if (event.keyCode === 13) {
     setTimeout(submitRoomCode, 0);
   } else {
     setTimeout(function() {
-      var textbox = document.getElementById("roomCodeTextbox");
-      var value = textbox.value;
+      var value = roomCodeTextbox.value;
       var canonicalValue = value.toUpperCase();
       if (value === canonicalValue) return;
-      var selectionStart = textbox.selectionStart;
-      var selectionEnd = textbox.selectionEnd;
-      textbox.value = canonicalValue;
-      textbox.selectionStart = selectionStart;
-      textbox.selectionEnd = selectionEnd;
+      var selectionStart = roomCodeTextbox.selectionStart;
+      var selectionEnd = roomCodeTextbox.selectionEnd;
+      roomCodeTextbox.value = canonicalValue;
+      roomCodeTextbox.selectionStart = selectionStart;
+      roomCodeTextbox.selectionEnd = selectionEnd;
     }, 0);
   }
 });
-document.getElementById("joinRoomButton").addEventListener("click", submitRoomCode);
+const joinRoomButton = document.getElementById("joinRoomButton") as HTMLInputElement;
+joinRoomButton.addEventListener("click", submitRoomCode);
 function submitRoomCode() {
-  roomCode = document.getElementById("roomCodeTextbox").value;
+  roomCode = roomCodeTextbox.value;
   connectToServer();
 }
 
+const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
 function setScreenMode(newMode) {
   screenMode = newMode;
   var loadingMessage = null;
@@ -61,13 +68,14 @@ function setScreenMode(newMode) {
     }
   })();
   ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
-    setDivVisible(document.getElementById(divId), divId === activeDivId);
+    setDivVisible(document.getElementById(divId) as HTMLDivElement, divId === activeDivId);
   });
-  if (activeDivId === "loginDiv") document.getElementById("roomCodeTextbox").focus();
-  document.getElementById("loadingMessageDiv").textContent = loadingMessage != null ? loadingMessage : "Please wait...";
+  if (activeDivId === "loginDiv") roomCodeTextbox.focus();
+  loadingMessageDiv.textContent = loadingMessage != null ? loadingMessage : "Please wait...";
 }
 
-var tableDiv = document.getElementById("tableDiv");
+const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
+const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
 
 var usersById = {};
 
@@ -116,7 +124,7 @@ function initGame(_database, game, history) {
     makeAMove(move, false);
   });
 
-  document.getElementById("roomCodeSpan").textContent = roomCode;
+  roomCodeSpan.textContent = roomCode;
 
   checkForDoneLoading();
 }
@@ -274,9 +282,9 @@ function fixFloatingThingZ() {
       objectDiv.style.zIndex = object.z;
     }
   });
-  document.getElementById("topRightDiv").style.zIndex = z++;
-  document.getElementById("helpDiv").style.zIndex = z++;
-  document.getElementById("closetDiv").style.zIndex = z++;
+  topRightDiv.style.zIndex = z++;
+  helpDiv.style.zIndex = z++;
+  closetDiv.style.zIndex = z++;
   modalMaskDiv.style.zIndex = z++;
   editUserDiv.style.zIndex = z++;
 }
@@ -925,27 +933,30 @@ function toggleHelp() {
   isHelpShown = !isHelpShown;
   renderHelp();
 }
-document.getElementById("helpDiv").addEventListener("mousemove", function() {
+const topRightDiv = document.getElementById("topRightDiv") as HTMLDivElement;
+const helpDiv = document.getElementById("helpDiv") as HTMLDivElement;
+helpDiv.addEventListener("mousemove", function() {
   if (draggingMode !== DRAG_NONE) return;
   isHelpMouseIn = true;
   renderHelp();
 });
-document.getElementById("helpDiv").addEventListener("mouseout", function() {
+helpDiv.addEventListener("mouseout", function() {
   isHelpMouseIn = false;
   renderHelp();
 });
 function renderHelp() {
   if (isHelpShown || isHelpMouseIn) {
-    document.getElementById("helpDiv").classList.add("helpExpanded");
+    helpDiv.classList.add("helpExpanded");
   } else {
-    document.getElementById("helpDiv").classList.remove("helpExpanded");
+    helpDiv.classList.remove("helpExpanded");
   }
 }
 
 var showCloset = false;
 
-var closetShowHideButton = document.getElementById("closetShowHideButton");
-var closetUl = document.getElementById("closetUl");
+const closetDiv = document.getElementById("closetDiv") as HTMLDivElement;
+const closetShowHideButton = document.getElementById("closetShowHideButton") as HTMLParagraphElement;
+const closetUl = document.getElementById("closetUl") as HTMLUListElement;
 closetShowHideButton.addEventListener("click", function(event) {
   event.preventDefault();
   if (event.button !== 0) return;
@@ -1117,8 +1128,8 @@ function pushChangeToHistory(change) {
 function eventToMouseX(event, div) { return event.clientX - div.getBoundingClientRect().left; }
 function eventToMouseY(event, div) { return event.clientY - div.getBoundingClientRect().top; }
 
+const userListUl = document.getElementById("userListUl") as HTMLUListElement;
 function renderUserList() {
-  var userListUl = document.getElementById("userListUl");
   var userIds = Object.keys(usersById);
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
@@ -1158,12 +1169,13 @@ function renderUserList() {
     stackHeightDiv.textContent = labelText;
     stackHeightDiv.style.display = "block";
   });
-  document.getElementById("myUserNameLi").addEventListener("click", showEditUserDialog);
+  const myUserNameLi = document.getElementById("myUserNameLi") as HTMLLIElement;
+  myUserNameLi.addEventListener("click", showEditUserDialog);
 }
 var dialogIsOpen = false;
-var modalMaskDiv = document.getElementById("modalMaskDiv");
+const modalMaskDiv = document.getElementById("modalMaskDiv") as HTMLDivElement;
 modalMaskDiv.addEventListener("mousedown", closeDialog);
-var editUserDiv = document.getElementById("editUserDiv");
+const editUserDiv = document.getElementById("editUserDiv") as HTMLDivElement;
 function showEditUserDialog() {
   modalMaskDiv.style.display = "block";
   editUserDiv.style.display = "block";
@@ -1186,7 +1198,7 @@ function closeDialog() {
   }
   dialogIsOpen = false;
 }
-var yourNameTextbox = document.getElementById("yourNameTextbox");
+const yourNameTextbox = document.getElementById("yourNameTextbox") as HTMLInputElement;
 yourNameTextbox.addEventListener("keydown", function(event) {
   event.stopPropagation();
   if (event.keyCode === 13) {
@@ -1198,7 +1210,7 @@ yourNameTextbox.addEventListener("keydown", function(event) {
     setTimeout(closeDialog, 0);
   }
 });
-var submitYourNameButton = document.getElementById("submitYourNameButton");
+const submitYourNameButton = document.getElementById("submitYourNameButton") as HTMLInputElement;
 submitYourNameButton.addEventListener("click", submitYourName);
 function submitYourName() {
   var newName = yourNameTextbox.value;
@@ -1212,7 +1224,7 @@ function submitYourName() {
     renderUserList();
   }
 }
-var yourRoleDropdown = document.getElementById("yourRoleDropdown");
+const yourRoleDropdown = document.getElementById("yourRoleDropdown") as HTMLSelectElement;
 yourRoleDropdown.addEventListener("change", function() {
   setTimeout(function() {
     var role = yourRoleDropdown.value;
@@ -1228,9 +1240,10 @@ yourRoleDropdown.addEventListener("change", function() {
     fixFloatingThingZ();
   }, 0);
 });
-document.getElementById("closeEditUserButton").addEventListener("click", closeDialog);
+const closeEditUserButton = document.getElementById("closeEditUserButton") as HTMLInputElement;
+closeEditUserButton.addEventListener("click", closeDialog);
 
-var moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox");
+const moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox") as HTMLInputElement;
 moveLockedObjectsModeCheckbox.addEventListener("click", function() {
   // Prevent keyboard focus from interfering with hotkeys.
   moveLockedObjectsModeCheckbox.blur();
@@ -1423,8 +1436,8 @@ function renderOrder() {
 function getStackId(newProps, object) {
   return [newProps.x, newProps.y, object.width, object.height].join(",");
 }
+const selectionRectangleDiv = document.getElementById("selectionRectangleDiv") as HTMLDivElement;
 function renderSelectionRectangle() {
-  var selectionRectangleDiv = document.getElementById("selectionRectangleDiv");
   if (draggingMode === DRAG_RECTANGLE_SELECT) {
     var x = rectangleSelectStartX;
     var y = rectangleSelectStartY;
@@ -1454,8 +1467,8 @@ function renderSelectionRectangle() {
     selectionRectangleDiv.style.display = "none";
   }
 }
+const numberBufferDiv = document.getElementById("numberBufferDiv") as HTMLDivElement;
 function renderNumberBuffer() {
-  var numberBufferDiv = document.getElementById("numberBufferDiv");
   if (numberTypingBuffer.length !== 0) {
     numberBufferDiv.textContent = numberTypingBuffer;
     numberBufferDiv.style.display = "block";
@@ -1740,13 +1753,13 @@ function generateRandomId() {
   return result;
 }
 function getObjectDiv(id) {
-  return document.getElementById("object-" + id);
+  return document.getElementById("object-" + id) as HTMLDivElement;
 }
 function getStackHeightDiv(id) {
-  return document.getElementById("stackHeight-" + id);
+  return document.getElementById("stackHeight-" + id) as HTMLDivElement;
 }
 function getBackgroundDiv(id) {
-  return document.getElementById("background-" + id);
+  return document.getElementById("background-" + id) as HTMLDivElement | null;
 }
 function setDivVisible(div, visible) {
   div.style.display = visible ? "block" : "none";
