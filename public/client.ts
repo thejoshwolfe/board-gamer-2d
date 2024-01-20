@@ -1,11 +1,77 @@
+interface JoinRoomArgs {
+  roomCode: string,
+  userId:   UserId,
+  userName: string,
+  role:     RoleId,
+  database: DbEntry[],
+  game:     RoomState,
+  history:  MakeAMoveArgs[],
+  users:    UserInfo[],
+}
+type MakeAMoveArgs = any; // TODO
+interface UserInfo {
+  id:       UserId,
+  userName: string,
+  role:     RoleId,
+}
+
+interface DbEntry {
+  id: DbEntryId,
+  // regular game object
+  width?: number,
+  height?: number,
+  faces?: ImagePath[],
+  // board
+  snapZones?: SnapZone[]
+  // closet properties
+  closetName?: string,
+  thumbnailWidth?: number,
+  thumbnailHeight?: number,
+  // screen
+  hideFaces?: number[],
+  visionWhitelist?: RoleId[],
+  labelPlayerName?: RoleId,
+  backgroundColor?: ColorWithParameterizedAlpha,
+}
+interface SnapZone {
+  cellWidth?: number,
+  cellHeight?: number,
+}
+
+interface RoomState {
+  roles: RoleDisplayNameBinding[],
+  objects: ObjectState[],
+}
+interface RoleDisplayNameBinding {
+  id: RoleId,
+  name: string,
+}
+interface ObjectState {
+  id: ObjectId,
+  prototype: DbEntryId,
+  x: number,
+  y: number,
+  locked: boolean,
+  temporary: boolean,
+
+  snapZones: SnapZone[]
+  hideFaces: number[],
+  visionWhitelist: RoleId[],
+  labelPlayerName: RoleId | "",
+  backgroundColor: ColorWithParameterizedAlpha | "",
+}
+
+type DbEntryId = string;
+type ImagePath = string; // "path.png" or "path.png#x,y,w,h" where [xywh] are integers in base 10.
+type UserId = string;
+type RoleId = string;
+type ColorWithParameterizedAlpha = string; // e.g. "rgba(255,0,0,$alpha)"
+type ObjectId = string;
+
 const AssertionFailure = new Error();
 
 let roomCode: string | null = null;
-let myUser: {
-  id: string,
-  userName: string,
-  role: string,
-} | null = null;
+let myUser: UserInfo | null = null;
 
 enum ScreenMode {
   DISCONNECTED,
@@ -80,21 +146,25 @@ function setScreenMode(newMode: ScreenMode) {
 const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
 const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
 
-var usersById = {};
+let usersById: {[index: UserId]: UserInfo} = {};
 
-var imageUrlToSize = {
-  //"face1.png": {width: 100, height: 200},
-};
+const LOADING = "<loading>";
+let imageUrlToSize: {[index: string]: {width: number, height: number} | typeof LOADING} = {};
 
-var gameDefinition;
-var database;
-var databaseById;
-var objectsById;
-var objectsWithSnapZones; // cache
-var hiderContainers; // cache
-var changeHistory;
-var futureChanges;
-function initGame(_database, game, history) {
+let gameDefinition: RoomState | null = null;
+let database: DbEntry[] | null = null;
+let databaseById: {[index: DbEntryId]: DbEntry} = {};
+let objectsById: {[index: ObjectId]: ObjectState} = {};
+
+// caches
+let objectsWithSnapZones: ObjectState[] = [];
+let hiderContainers: ObjectState[] = [];
+
+// undo/redo support
+let changeHistory: MakeAMoveArgs[] = [];
+let futureChanges: MakeAMoveArgs[] = [];
+
+function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
   database = _database;
   databaseById = {};
   database.forEach(function(closetObject) {
@@ -108,15 +178,11 @@ function initGame(_database, game, history) {
   changeHistory = [];
   futureChanges = [];
   for (var i = 0; i < gameDefinition.objects.length; i++) {
-    var rawDefinition = gameDefinition.objects[i];
-    var id = rawDefinition.id;
-    if (id == null) throw new Error("game object has no id");
+    let rawDefinition = gameDefinition.objects[i];
+    let id = rawDefinition.id;
+    if (id == null) throw AssertionFailure;
 
-    var object = makeObject(id, rawDefinition.prototype);
-    object.x = rawDefinition.x;
-    object.y = rawDefinition.y;
-    object.z = i;
-    object.faceIndex = rawDefinition.faceIndex || 0;
+    let object = makeObject(id, rawDefinition.prototype, rawDefinition.x, rawDefinition.y, i, 0);
     object.locked = !!rawDefinition.locked;
     registerObject(object);
   }
@@ -131,12 +197,7 @@ function initGame(_database, game, history) {
 
   checkForDoneLoading();
 }
-function resolveFace(face) {
-  if (face === "front") return 0;
-  if (face === "back") return 1;
-  return face;
-}
-function parseFacePath(path) {
+function parseFacePath(path: ImagePath) {
   let splitIndex = path.indexOf("#");
   if (splitIndex === -1) {
     return {url:path};
@@ -151,8 +212,7 @@ function parseFacePath(path) {
   if (isNaN(x - y - width - height)) throw new Error("malformed url: " + path);
   return {url, x, y, width, height};
 }
-const LOADING = "<loading>";
-function preloadImagePath(path) {
+function preloadImagePath(path: ImagePath) {
   let {url} = parseFacePath(path);
   let size = imageUrlToSize[url];
   if (size != null) return; // already loaded or loading.
@@ -174,24 +234,23 @@ function checkForDoneLoading() {
     if (imageUrlToSize[url] === LOADING) return; // not done yet.
   }
   // all done loading
-  getObjects().forEach(object => render(object));
+  getObjects().forEach(object => render(object, false));
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
-function makeObject(id, prototypeId) {
-  // TODO: hash lookup
-  var objectDefinition = databaseById[prototypeId];
+function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, z: number, faceIndex: number): ObjectState {
+  let objectDefinition = databaseById[prototypeId];
   if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
   return {
     id: id,
     prototype: prototypeId,
     temporary: false,
-    x: null,
-    y: null,
-    z: null,
-    faceIndex: null,
-    locked: null,
+    x: x,
+    y: y,
+    z: z,
+    faceIndex: faceIndex,
+    locked: false,
     width:  objectDefinition.width  || error(),
     height: objectDefinition.height || error(),
     faces: objectDefinition.faces || [],
@@ -205,7 +264,7 @@ function makeObject(id, prototypeId) {
     throw new Error();
   }
 }
-function registerObject(object) {
+function registerObject(object: ObjectState) {
   objectsById[object.id] = object;
   if (object.snapZones.length > 0) objectsWithSnapZones.push(object);
   if (object.visionWhitelist.length > 0) hiderContainers.push(object);
@@ -226,7 +285,7 @@ function registerObject(object) {
     );
   }
 }
-function deleteObject(id) {
+function deleteObject(id: ObjectId) {
   if (hoverObject === objectsById[id]) hoverObject = null;
   delete objectsById[id];
   deleteObjectFromArray(objectsWithSnapZones, id);
@@ -236,7 +295,7 @@ function deleteObject(id) {
   var backgroundDiv = getBackgroundDiv(id);
   if (backgroundDiv != null) deleteDiv(backgroundDiv);
 }
-function deleteObjectFromArray(array, id) {
+function deleteObjectFromArray(array: ObjectState[], id: ObjectId) {
   for (var i = 0; i < array.length; i++) {
     if (array[i].id === id) {
       array.splice(i, 1);
@@ -244,7 +303,7 @@ function deleteObjectFromArray(array, id) {
     }
   }
 }
-function deleteDiv(div) {
+function deleteDiv(div: HTMLDivElement) {
   if (hoverDiv === div) hoverDiv = null;
   tableDiv.removeChild(div);
 }
@@ -253,9 +312,9 @@ function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
   database = null;
-  databaseById = null;
+  databaseById = {};
   gameDefinition = null;
-  objectsById = null;
+  objectsById = {};
   usersById = {};
   selectedObjectIdToNewProps = {};
   consumeNumberModifier();
@@ -610,13 +669,14 @@ function pushObjectProps(move, object) {
 }
 var objectPropCount = 6;
 function consumeObjectProps(move, i) {
-  var    id              = move[i++];
-  var    prototypeId     = move[i++];
-  var object = makeObject(id, prototypeId);
-  object.x               = move[i++];
-  object.y               = move[i++];
-  object.z               = move[i++];
-  object.faceIndex       = move[i++];
+  let object = makeObject(
+    move[i++], // id
+    move[i++], // prototypeId
+    move[i++], // x
+    move[i++], // y
+    move[i++], // z
+    move[i++], // faceIndex
+  );
   return object;
 }
 
@@ -1039,12 +1099,8 @@ function onClosetObjectMouseOut(event) {
 
 function makeTemporaryObject(prototypeId, x, y, z) {
   var id = generateRandomId();
-  var object = makeObject(id, prototypeId);
+  var object = makeObject(id, prototypeId, x, y, z, 0);
   object.temporary = true;
-  object.x = x;
-  object.y = y;
-  object.z = z;
-  object.faceIndex = 0;
   object.locked = false;
   registerObject(object);
   render(object, false);
@@ -1275,7 +1331,7 @@ function render(object, isAnimated) {
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
         if (hiderContainer.visionWhitelist.indexOf(myUser.role) === -1) {
           // blocked
-          var forbiddenFaces = hiderContainer.hideFaces.map(resolveFace);
+          var forbiddenFaces = hiderContainer.hideFaces;
           var betterFaceIndex = -1;
           for (var j = 0; j < object.faces.length; j++) {
             var tryThisIndex = (faceIndex + j) % object.faces.length;
@@ -1308,7 +1364,7 @@ function render(object, isAnimated) {
     objectDiv.style.backgroundImage = `url(${url})`;
     renderSize(object, objectDiv, object.width, object.height);
   } else if (object.backgroundColor !== "") {
-    objectDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "0.4");
+    objectDiv.style.backgroundColor = object.backgroundColor.replace(/\$alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
     objectDiv.style.borderWidth = "3px";
     objectDiv.style.borderStyle = "solid";
@@ -1334,7 +1390,7 @@ function render(object, isAnimated) {
     backgroundDiv.style.height = object.height + "px";
     backgroundDiv.style.zIndex = 0;
     backgroundDiv.style.display = "block";
-    backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "1.0");
+    backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/\$alpha/, "1.0");
   }
 }
 function renderExaminingObjects() {
@@ -1624,17 +1680,18 @@ function connectToServer() {
       case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
         if (message.cmd === "joinRoom") {
           setScreenMode(ScreenMode.PLAY);
-          roomCode = message.args.roomCode;
+          let joinRoomArgs = message.args as JoinRoomArgs;
+          roomCode = joinRoomArgs.roomCode;
           myUser = {
-            id: message.args.userId,
-            userName: message.args.userName,
-            role: message.args.role,
+            id: joinRoomArgs.userId,
+            userName: joinRoomArgs.userName,
+            role: joinRoomArgs.role,
           };
           usersById[myUser.id] = myUser;
-          message.args.users.forEach(function(otherUser) {
+          joinRoomArgs.users.forEach(function(otherUser) {
             usersById[otherUser.id] = otherUser;
           });
-          initGame(message.args.database, message.args.game, message.args.history);
+          initGame(joinRoomArgs.database, joinRoomArgs.game, joinRoomArgs.history);
           renderUserList();
         } else throw AssertionFailure;
         break;
