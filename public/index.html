@@ -1,5 +1,6 @@
 <head>
   <head>
+    <meta charset="UTF-8">
     <title>Board Gamer 2d</title>
     <style>
       body {
@@ -13,20 +14,35 @@
         height: 800px;
         width: 800px;
       }
-      #roomInfoDiv {
+      #topRightDiv {
         position: fixed;
         top: 0px;
         left: 100%;
         transform: translateX(-100%);
         padding: 0.2em;
-        background-color: rgba(224,224,224,0.5);
         font-size: 10pt; font-family: monospace;
         white-space: nowrap;
+      }
+      #roomInfoDiv {
+        padding: 0.2em;
+        background-color: rgba(224,224,224,0.5);
       }
       .roomCode {
         font-size: 20pt; font-weight: bold; font-family: monospace;
         text-align: center;
       }
+      #someButtonsDiv {
+        background-color: rgba(224,224,224,0.5);
+      }
+      #someButtonsDiv > * {
+        /* put some spacing around the children. */
+        /* note that margin and padding don't space the kids out from the parent's borders, */
+        /* so use an invisible border instead. */
+        /* also, this only works reliably on some elements, such as divs. */
+        /* if you're a web dev and you've found this comment, please open a PR to fix this or something. */
+        border: 0.5em solid transparent;
+      }
+
       #helpDiv {
         position: fixed;
         top: 20px;
@@ -167,9 +183,14 @@
           Number+Click: Draw N objects from the top of a stack.<br>
         </p>
       </div>
-      <div id="roomInfoDiv">
-        <span style="text-align: center;">Room Code:</span><br><span id="roomCodeSpan" class="roomCode">???</span>
-        <ul id="userListUl"></ul>
+      <div id="topRightDiv">
+        <div id="roomInfoDiv">
+          <span style="text-align: center;">Room Code:</span><br><span id="roomCodeSpan" class="roomCode">???</span>
+          <ul id="userListUl"></ul>
+        </div>
+        <div id="someButtonsDiv" style="margin-top: 1em">
+          <div><label title="Allow selecting locked objects"><input id="moveLockedObjectsModeCheckbox" type="checkbox" tabindex=-1>🔒🖐🏾</label></div>
+        </div>
       </div>
       <div id="numberBufferDiv" style="display: none;"></div>
       <div id="closetDiv">
@@ -185,7 +206,7 @@
         <p style="text-align: right;"><input id="closeEditUserButton" type="button" value="Close"></p>
       </div>
     </div>
-    <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt;">
+    <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt; margin: 15px;">
       <p><input id="createRoomButton" type="button" class="largeTextButon" value="Create a Room"></p>
       <p>
         Join a Room:

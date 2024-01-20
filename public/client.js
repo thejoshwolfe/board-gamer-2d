@@ -274,7 +274,7 @@ function fixFloatingThingZ() {
       objectDiv.style.zIndex = object.z;
     }
   });
-  document.getElementById("roomInfoDiv").style.zIndex = z++;
+  document.getElementById("topRightDiv").style.zIndex = z++;
   document.getElementById("helpDiv").style.zIndex = z++;
   document.getElementById("closetDiv").style.zIndex = z++;
   modalMaskDiv.style.zIndex = z++;
@@ -312,7 +312,7 @@ function onObjectMouseDown(event) {
   if (examiningMode !== EXAMINE_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
-  if (object.locked) return; // click thee behind me, satan
+  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
 
@@ -347,7 +347,7 @@ function onObjectMouseMove(event) {
   if (draggingMode != DRAG_NONE) return;
   var objectDiv = this;
   var object = objectsById[objectDiv.dataset.id];
-  if (object.locked) return;
+  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
   setHoverObject(object);
 }
 function onObjectMouseOut(event) {
@@ -402,7 +402,7 @@ document.addEventListener("mousemove", function(event) {
       if (minY > maxY) { var tmp = maxY; maxY = minY; minY = tmp; }
       var newSelectedObjects = [];
       getObjects().forEach(function(object) {
-        if (object.locked) return;
+        if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
         if (object.x > maxX) return;
         if (object.y > maxY) return;
         if (object.x + object.width  < minX) return;
@@ -876,7 +876,7 @@ function examineMulti() {
     var hoverHeight = hoverObject.height;
     selection = {};
     getObjects().forEach(function(object) {
-      if (object.locked) return; // don't look at me
+      if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
       if (object.x >= hoverX   + hoverWidth)    return;
       if (object.y >= hoverY   + hoverHeight)   return;
       if (hoverX   >= object.x + object.width)  return;
@@ -1230,6 +1230,13 @@ yourRoleDropdown.addEventListener("change", function() {
 });
 document.getElementById("closeEditUserButton").addEventListener("click", closeDialog);
 
+var moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox");
+moveLockedObjectsModeCheckbox.addEventListener("click", function() {
+  // Prevent keyboard focus from interfering with hotkeys.
+  moveLockedObjectsModeCheckbox.blur();
+});
+
+
 function render(object, isAnimated) {
   if (object.id in examiningObjectsById) return; // different handling for this
   var x = object.x;
@@ -1275,8 +1282,8 @@ function render(object, isAnimated) {
   }
   objectDiv.style.left = x + "px";
   objectDiv.style.top  = y + "px";
-  objectDiv.style.width  = object.width;
-  objectDiv.style.height = object.height;
+  objectDiv.style.width  = object.width  + "px";
+  objectDiv.style.height = object.height + "px";
   objectDiv.style.zIndex = z;
   if (object.faces.length > 0) {
     var facePath = object.faces[faceIndex];
@@ -1307,8 +1314,8 @@ function render(object, isAnimated) {
     }
     backgroundDiv.style.left = x + "px";
     backgroundDiv.style.top = y + "px";
-    backgroundDiv.style.width  = object.width;
-    backgroundDiv.style.height = object.height;
+    backgroundDiv.style.width  = object.width  + "px";
+    backgroundDiv.style.height = object.height + "px";
     backgroundDiv.style.zIndex = 0;
     backgroundDiv.style.display = "block";
     backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/alpha/, "1.0");
@@ -1360,8 +1367,8 @@ function renderExaminingObjects() {
     var renderY = (windowHeight - renderHeight) / 2;
     var objectDiv = getObjectDiv(object.id);
     objectDiv.classList.add("animatedMovement");
-    objectDiv.style.left = renderX + window.scrollX;
-    objectDiv.style.top  = renderY + window.scrollY;
+    objectDiv.style.left = (renderX + window.scrollX) + "px";
+    objectDiv.style.top  = (renderY + window.scrollY) + "px";
     renderSize(object, objectDiv, renderWidth, renderHeight);
     objectDiv.style.zIndex = maxZ + i + 3;
     var stackHeightDiv = getStackHeightDiv(object.id);
@@ -1369,8 +1376,8 @@ function renderExaminingObjects() {
   }
 }
 function renderSize(object, objectDiv, renderWidth, renderHeight) {
-  objectDiv.style.width  = renderWidth;
-  objectDiv.style.height = renderHeight;
+  objectDiv.style.width  = renderWidth  + "px";
+  objectDiv.style.height = renderHeight + "px";
   let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath);
   if (x != null) {
     let scaleX = renderWidth  / width;
