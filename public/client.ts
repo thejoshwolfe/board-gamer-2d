@@ -1,3 +1,4 @@
+const AssertionFailure = new Error();
 
 let roomCode: string | null = null;
 let myUser: {
@@ -6,13 +7,15 @@ let myUser: {
   role: string,
 } | null = null;
 
-const SCREEN_MODE_DISCONNECTED = 0;
-const SCREEN_MODE_LOGIN = 1;
-const SCREEN_MODE_WAITING_FOR_SERVER_CONNECT = 2;
-const SCREEN_MODE_WAITING_FOR_CREATE_ROOM = 3;
-const SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION = 4;
-const SCREEN_MODE_PLAY = 5;
-let screenMode = SCREEN_MODE_LOGIN;
+enum ScreenMode {
+  DISCONNECTED,
+  LOGIN,
+  WAITING_FOR_SERVER_CONNECT,
+  WAITING_FOR_CREATE_ROOM,
+  WAITING_FOR_ROOM_CODE_CONFIRMATION,
+  PLAY,
+}
+let screenMode = ScreenMode.LOGIN;
 
 const createRoomButton = document.getElementById("createRoomButton") as HTMLInputElement;
 createRoomButton.addEventListener("click", function() {
@@ -45,26 +48,26 @@ function submitRoomCode() {
 }
 
 const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
-function setScreenMode(newMode) {
+function setScreenMode(newMode: ScreenMode) {
   screenMode = newMode;
   var loadingMessage = null;
   var activeDivId = (function() {
     switch (screenMode) {
-      case SCREEN_MODE_PLAY: return "roomDiv";
-      case SCREEN_MODE_LOGIN: return "loginDiv";
-      case SCREEN_MODE_DISCONNECTED:
+      case ScreenMode.PLAY: return "roomDiv";
+      case ScreenMode.LOGIN: return "loginDiv";
+      case ScreenMode.DISCONNECTED:
         loadingMessage = "Disconnected...";
         return "loadingDiv";
-      case SCREEN_MODE_WAITING_FOR_SERVER_CONNECT:
+      case ScreenMode.WAITING_FOR_SERVER_CONNECT:
         loadingMessage = "Trying to reach the server...";
         return "loadingDiv";
-      case SCREEN_MODE_WAITING_FOR_CREATE_ROOM:
+      case ScreenMode.WAITING_FOR_CREATE_ROOM:
         loadingMessage = "Waiting for a new room...";
         return "loadingDiv";
-      case SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION:
+      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
         loadingMessage = "Checking room code...";
         return "loadingDiv";
-      default: throw asdf;
+      default: throw AssertionFailure;
     }
   })();
   ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
@@ -1112,7 +1115,7 @@ function reverseChange(move) {
           fromFaceIndex);
         render(object, true);
         break;
-      default: throw asdf();
+      default: throw AssertionFailure;
     }
   }
   renderOrder();
@@ -1578,7 +1581,7 @@ function makeWebSocket() {
 var socket;
 var isConnected = false;
 function connectToServer() {
-  setScreenMode(SCREEN_MODE_WAITING_FOR_SERVER_CONNECT);
+  setScreenMode(ScreenMode.WAITING_FOR_SERVER_CONNECT);
 
   socket = makeWebSocket();
   socket.addEventListener('open', onOpen, false);
@@ -1592,10 +1595,10 @@ function connectToServer() {
     var roomCodeToSend = roomCode;
     if (roomCode != null) {
       roomCodeToSend = roomCode;
-      setScreenMode(SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION);
+      setScreenMode(ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION);
     } else {
       roomCodeToSend = "new";
-      setScreenMode(SCREEN_MODE_WAITING_FOR_CREATE_ROOM);
+      setScreenMode(ScreenMode.WAITING_FOR_CREATE_ROOM);
     }
     sendMessage({
       cmd: "joinRoom",
@@ -1609,18 +1612,18 @@ function connectToServer() {
     if (msg === "keepAlive") return;
     console.log(msg);
     var message = JSON.parse(msg);
-    if (screenMode === SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
+    if (screenMode === ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
       // nice try
       disconnect();
-      setScreenMode(SCREEN_MODE_LOGIN);
+      setScreenMode(ScreenMode.LOGIN);
       // TODO: show message that says we tried
       return;
     }
     switch (screenMode) {
-      case SCREEN_MODE_WAITING_FOR_CREATE_ROOM:
-      case SCREEN_MODE_WAITING_FOR_ROOM_CODE_CONFIRMATION:
+      case ScreenMode.WAITING_FOR_CREATE_ROOM:
+      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
         if (message.cmd === "joinRoom") {
-          setScreenMode(SCREEN_MODE_PLAY);
+          setScreenMode(ScreenMode.PLAY);
           roomCode = message.args.roomCode;
           myUser = {
             id: message.args.userId,
@@ -1633,9 +1636,9 @@ function connectToServer() {
           });
           initGame(message.args.database, message.args.game, message.args.history);
           renderUserList();
-        } else throw asdf;
+        } else throw AssertionFailure;
         break;
-      case SCREEN_MODE_PLAY:
+      case ScreenMode.PLAY:
         if (message.cmd === "makeAMove") {
           makeAMove(message.args, true);
         } else if (message.cmd === "userJoined") {
@@ -1656,7 +1659,7 @@ function connectToServer() {
           renderUserList();
         }
         break;
-      default: throw asdf;
+      default: throw AssertionFailure;
     }
   }
   function timeoutThenCreateNew() {
@@ -1665,7 +1668,7 @@ function connectToServer() {
       isConnected = false;
       console.log("disconnected");
       deleteTableAndEverything();
-      setScreenMode(SCREEN_MODE_DISCONNECTED);
+      setScreenMode(ScreenMode.DISCONNECTED);
     }
     setTimeout(connectToServer, 1000);
   }
@@ -1728,7 +1731,7 @@ function makeAMove(move, shouldRender) {
         }
         if (shouldRender) objectsToRender.push(object);
         break;
-      default: throw asdf();
+      default: throw AssertionFailure;
     }
   }
 
@@ -1791,4 +1794,4 @@ function httpGet(url, cb) {
   request.send();
 }
 
-setScreenMode(SCREEN_MODE_LOGIN);
+setScreenMode(ScreenMode.LOGIN);
