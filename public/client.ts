@@ -1,3 +1,20 @@
+interface UserJoinedArgs {
+  id: UserId,
+  userName: string,
+  role: RoleId,
+}
+interface UserLeftArgs {
+  id: UserId,
+}
+interface ChangeMyNameArgs {
+  id: UserId,
+  userName: string,
+}
+interface ChangeMyRoleArgs {
+  id: UserId,
+  role: RoleId,
+}
+
 interface JoinRoomArgs {
   roomCode: string,
   userId:   UserId,
@@ -49,12 +66,18 @@ interface RoleDisplayNameBinding {
 interface ObjectState {
   id: ObjectId,
   prototype: DbEntryId,
-  x: number,
-  y: number,
+  width: number,
+  height: number,
   locked: boolean,
   temporary: boolean,
 
-  snapZones: SnapZone[]
+  x: number,
+  y: number,
+  z: number,
+  faceIndex: number,
+
+  faces: ImagePath[],
+  snapZones: SnapZone[],
   hideFaces: number[],
   visionWhitelist: RoleId[],
   labelPlayerName: RoleId | "",
@@ -95,11 +118,11 @@ roomCodeTextbox.addEventListener("keydown", function(event) {
     setTimeout(submitRoomCode, 0);
   } else {
     setTimeout(function() {
-      var value = roomCodeTextbox.value;
-      var canonicalValue = value.toUpperCase();
+      let value = roomCodeTextbox.value;
+      let canonicalValue = value.toUpperCase();
       if (value === canonicalValue) return;
-      var selectionStart = roomCodeTextbox.selectionStart;
-      var selectionEnd = roomCodeTextbox.selectionEnd;
+      let selectionStart = roomCodeTextbox.selectionStart;
+      let selectionEnd = roomCodeTextbox.selectionEnd;
       roomCodeTextbox.value = canonicalValue;
       roomCodeTextbox.selectionStart = selectionStart;
       roomCodeTextbox.selectionEnd = selectionEnd;
@@ -116,8 +139,8 @@ function submitRoomCode() {
 const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
 function setScreenMode(newMode: ScreenMode) {
   screenMode = newMode;
-  var loadingMessage = null;
-  var activeDivId = (function() {
+  let loadingMessage = null;
+  let activeDivId = (function() {
     switch (screenMode) {
       case ScreenMode.PLAY: return "roomDiv";
       case ScreenMode.LOGIN: return "loginDiv";
@@ -177,7 +200,7 @@ function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[
   hiderContainers = [];
   changeHistory = [];
   futureChanges = [];
-  for (var i = 0; i < gameDefinition.objects.length; i++) {
+  for (let i = 0; i < gameDefinition.objects.length; i++) {
     let rawDefinition = gameDefinition.objects[i];
     let id = rawDefinition.id;
     if (id == null) throw AssertionFailure;
@@ -218,7 +241,7 @@ function preloadImagePath(path: ImagePath) {
   if (size != null) return; // already loaded or loading.
   imageUrlToSize[url] = LOADING;
   // Let the host environment cache and deduplicate these.
-  var img = new Image();
+  let img = new Image();
   img.src = url;
   img.addEventListener("load", function() {
     imageUrlToSize[url] = {
@@ -260,7 +283,7 @@ function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, 
     backgroundColor: objectDefinition.backgroundColor || "",
     labelPlayerName: objectDefinition.labelPlayerName || "",
   };
-  function error() {
+  function error(): never {
     throw new Error();
   }
 }
@@ -274,7 +297,7 @@ function registerObject(object: ObjectState) {
       '<div id="stackHeight-'+object.id+'" class="stackHeight" style="display:none;"></div>' +
     '</div>'
   );
-  var objectDiv = getObjectDiv(object.id);
+  let objectDiv = getObjectDiv(object.id);
   objectDiv.addEventListener("mousedown", onObjectMouseDown);
   objectDiv.addEventListener("mousemove", onObjectMouseMove);
   objectDiv.addEventListener("mouseout",  onObjectMouseOut);
@@ -292,11 +315,11 @@ function deleteObject(id: ObjectId) {
   deleteObjectFromArray(hiderContainers, id);
   delete selectedObjectIdToNewProps[id];
   deleteDiv(getObjectDiv(id));
-  var backgroundDiv = getBackgroundDiv(id);
+  let backgroundDiv = getBackgroundDiv(id);
   if (backgroundDiv != null) deleteDiv(backgroundDiv);
 }
 function deleteObjectFromArray(array: ObjectState[], id: ObjectId) {
-  for (var i = 0; i < array.length; i++) {
+  for (let i = 0; i < array.length; i++) {
     if (array[i].id === id) {
       array.splice(i, 1);
       break;
@@ -320,68 +343,78 @@ function deleteTableAndEverything() {
   consumeNumberModifier();
   // leave the image cache alone
 }
-function findMaxZ(excludingSelection) {
-  var maxZ = null;
+function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectTempProps}): number {
+  let maxZ: number | null = null;
   getObjects().forEach(function(object) {
     if (excludingSelection != null && object.id in excludingSelection) return;
-    var newProps = selectedObjectIdToNewProps[object.id];
+    let newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
     if (maxZ == null || newProps.z > maxZ) maxZ = newProps.z;
   });
-  return maxZ;
+  return maxZ || 0;
 }
 function fixFloatingThingZ() {
   renderExaminingObjects();
-  var z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
+  let z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
   hiderContainers.forEach(function(object) {
-    var objectDiv = getObjectDiv(object.id);
-    if (object.visionWhitelist.indexOf(myUser.role) === -1) {
+    let objectDiv = getObjectDiv(object.id);
+    if (object.visionWhitelist.indexOf(myUser!.role) === -1) {
       // blocked
-      objectDiv.style.zIndex = z++;
+      objectDiv.style.zIndex = String(z++);
     } else {
       // see it
-      objectDiv.style.zIndex = object.z;
+      objectDiv.style.zIndex = String(object.z);
     }
   });
-  topRightDiv.style.zIndex = z++;
-  helpDiv.style.zIndex = z++;
-  closetDiv.style.zIndex = z++;
-  modalMaskDiv.style.zIndex = z++;
-  editUserDiv.style.zIndex = z++;
+  topRightDiv .style.zIndex = String(z++);
+  helpDiv     .style.zIndex = String(z++);
+  closetDiv   .style.zIndex = String(z++);
+  modalMaskDiv.style.zIndex = String(z++);
+  editUserDiv .style.zIndex = String(z++);
 }
 
-var DRAG_NONE = 0;
-var DRAG_RECTANGLE_SELECT = 1;
-var DRAG_MOVE_SELECTION = 2;
-var draggingMode = DRAG_NONE;
+enum DragMode {
+  NONE,
+  RECTANGLE_SELECT,
+  MOVE_SELECTION,
+}
+let draggingMode = DragMode.NONE;
 
-var rectangleSelectStartX;
-var rectangleSelectStartY;
-var rectangleSelectEndX;
-var rectangleSelectEndY;
-var selectedObjectIdToNewProps = {};
+let rectangleSelectStartX = 0;
+let rectangleSelectStartY = 0;
+let rectangleSelectEndX = 0;
+let rectangleSelectEndY = 0;
+let selectedObjectIdToNewProps: {[index: ObjectId]: ObjectTempProps} = {};
+interface ObjectTempProps {
+  x: number,
+  y: number,
+  z: number,
+  faceIndex: number,
+}
 
-var EXAMINE_NONE = 0;
-var EXAMINE_SINGLE = 1;
-var EXAMINE_MULTI = 2;
-var examiningMode = EXAMINE_NONE;
-var examiningObjectsById = {};
+enum ExamineMode {
+  NONE,
+  SINGLE,
+  MULTI,
+}
+let examiningMode = ExamineMode.NONE;
+let examiningObjectsById: {[index: ObjectId]: ObjectState} = {};
 
-var hoverObject;
-var hoverDiv;
-var lastMouseDragX;
-var lastMouseDragY;
+let hoverObject: ObjectState | null = null;
+let hoverDiv: HTMLDivElement | null = null;
+let lastMouseDragX = 0;
+let lastMouseDragY = 0;
 
-var accordionMouseStartX = null;
-var accordionObjectStartX = null;
-var isGKeyDown = false;
+let accordionMouseStartX: number | null = null;
+let accordionObjectStartX: number | null = null;
+let isGKeyDown = false;
 
-function onObjectMouseDown(event) {
+function onObjectMouseDown(event: MouseEvent) {
   if (event.button !== 0) return;
-  if (examiningMode !== EXAMINE_NONE) return;
-  var objectDiv = this;
-  var object = objectsById[objectDiv.dataset.id];
+  if (examiningMode !== ExamineMode.NONE) return;
+  let objectDiv = event.currentTarget as HTMLDivElement;
+  let object = objectsById[objectDiv.dataset.id as ObjectId];
   if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
@@ -389,13 +422,13 @@ function onObjectMouseDown(event) {
   // select
   if (selectedObjectIdToNewProps[object.id] == null) {
     // make a selection
-    var numberModifier = consumeNumberModifier();
+    let numberModifier = consumeNumberModifier();
     if (numberModifier == null) numberModifier = 1;
     if (numberModifier === 1) {
       setSelectedObjects([object]);
     } else {
-      var stackId = getStackId(object, object);
-      var stackOfObjects = getObjects().filter(function(object) { return getStackId(object, object) === stackId; });
+      let stackId = getStackId(object, object);
+      let stackOfObjects = getObjects().filter(function(object) { return getStackId(object, object) === stackId; });
       stackOfObjects.sort(compareZ);
       // we can be pretty sure the object we're clicking is the top.
       if (numberModifier < stackOfObjects.length) {
@@ -406,23 +439,23 @@ function onObjectMouseDown(event) {
   }
 
   // begin drag
-  draggingMode = DRAG_MOVE_SELECTION;
+  draggingMode = DragMode.MOVE_SELECTION;
   lastMouseDragX = eventToMouseX(event, tableDiv);
   lastMouseDragY = eventToMouseY(event, tableDiv);
   if (isGKeyDown) startAccordion();
 
   bringSelectionToTop();
 }
-function onObjectMouseMove(event) {
-  if (draggingMode != DRAG_NONE) return;
-  var objectDiv = this;
-  var object = objectsById[objectDiv.dataset.id];
+function onObjectMouseMove(event: MouseEvent) {
+  if (draggingMode != DragMode.NONE) return;
+  let objectDiv = event.currentTarget as HTMLDivElement;
+  let object = objectsById[objectDiv.dataset.id as ObjectId];
   if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
   setHoverObject(object);
 }
-function onObjectMouseOut(event) {
-  var objectDiv = this;
-  var object = objectsById[objectDiv.dataset.id];
+function onObjectMouseOut(event: MouseEvent) {
+  let objectDiv = event.currentTarget as HTMLDivElement;
+  let object = objectsById[objectDiv.dataset.id as ObjectId];
   if (hoverObject === object) {
     setHoverObject(null);
   }
@@ -431,15 +464,15 @@ function onObjectMouseOut(event) {
 function bringSelectionToTop() {
   // bring selection to top
   // effectively do a stable sort.
-  var selection = selectedObjectIdToNewProps;
-  var newPropses = [];
-  for (var id in selection) {
+  let selection = selectedObjectIdToNewProps;
+  let newPropses: ObjectTempProps[] = [];
+  for (let id in selection) {
     newPropses.push(selection[id]);
   }
   newPropses.sort(compareZ);
-  var z = findMaxZ(selection);
+  let z = findMaxZ(selection);
   newPropses.forEach(function(newProps, i) {
-    newProps.z = z + i + 1;
+    newProps.z = z + i + 1; // This modifies `selection`.
   });
   renderAndMaybeCommitSelection(selection, true);
   fixFloatingThingZ();
@@ -449,28 +482,28 @@ tableDiv.addEventListener("mousedown", function(event) {
   if (event.button !== 0) return;
   // clicking the table
   event.preventDefault();
-  if (examiningMode !== EXAMINE_NONE) return;
-  draggingMode = DRAG_RECTANGLE_SELECT;
+  if (examiningMode !== ExamineMode.NONE) return;
+  draggingMode = DragMode.RECTANGLE_SELECT;
   rectangleSelectStartX = eventToMouseX(event, tableDiv);
   rectangleSelectStartY = eventToMouseY(event, tableDiv);
   setSelectedObjects([]);
 });
 
 document.addEventListener("mousemove", function(event) {
-  var x = eventToMouseX(event, tableDiv);
-  var y = eventToMouseY(event, tableDiv);
-  if (draggingMode === DRAG_RECTANGLE_SELECT) {
+  let x = eventToMouseX(event, tableDiv);
+  let y = eventToMouseY(event, tableDiv);
+  if (draggingMode === DragMode.RECTANGLE_SELECT) {
     rectangleSelectEndX = x;
     rectangleSelectEndY = y;
     renderSelectionRectangle();
     (function() {
-      var minX = rectangleSelectStartX;
-      var minY = rectangleSelectStartY;
-      var maxX = rectangleSelectEndX;
-      var maxY = rectangleSelectEndY;
-      if (minX > maxX) { var tmp = maxX; maxX = minX; minX = tmp; }
-      if (minY > maxY) { var tmp = maxY; maxY = minY; minY = tmp; }
-      var newSelectedObjects = [];
+      let minX = rectangleSelectStartX;
+      let minY = rectangleSelectStartY;
+      let maxX = rectangleSelectEndX;
+      let maxY = rectangleSelectEndY;
+      if (minX > maxX) { let tmp = maxX; maxX = minX; minX = tmp; }
+      if (minY > maxY) { let tmp = maxY; maxY = minY; minY = tmp; }
+      let newSelectedObjects: ObjectState[] = [];
       getObjects().forEach(function(object) {
         if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
         if (object.x > maxX) return;
@@ -481,31 +514,32 @@ document.addEventListener("mousemove", function(event) {
       });
       setSelectedObjects(newSelectedObjects);
     })();
-  } else if (draggingMode === DRAG_MOVE_SELECTION) {
+  } else if (draggingMode === DragMode.MOVE_SELECTION) {
     if (accordionMouseStartX != null) {
       // accordion drag
-      var dx = x - accordionMouseStartX;
-      var objects = [];
-      for (var id in selectedObjectIdToNewProps) {
+      let dx = x - accordionMouseStartX;
+      let objectStartX = accordionObjectStartX!;
+      let objects: ObjectState[] = [];
+      for (let id in selectedObjectIdToNewProps) {
         objects.push(objectsById[id]);
       }
       objects.sort(compareZ);
       objects.forEach(function(object, i) {
-        var newProps = selectedObjectIdToNewProps[object.id];
-        var factor = i === objects.length - 1 ? 1 : i / (objects.length - 1);
-        newProps.x = Math.round(accordionObjectStartX + dx * factor);
-        render(object);
+        let newProps = selectedObjectIdToNewProps[object.id];
+        let factor = i === objects.length - 1 ? 1 : i / (objects.length - 1);
+        newProps.x = Math.round(objectStartX + dx * factor);
+        render(object, false);
       });
     } else {
       // normal drag
-      var dx = x - lastMouseDragX;
-      var dy = y - lastMouseDragY;
+      let dx = x - lastMouseDragX;
+      let dy = y - lastMouseDragY;
       Object.keys(selectedObjectIdToNewProps).forEach(function(id) {
-        var object = objectsById[id];
-        var newProps = selectedObjectIdToNewProps[id];
+        let object = objectsById[id];
+        let newProps = selectedObjectIdToNewProps[id];
         newProps.x = Math.round(newProps.x + dx);
         newProps.y = Math.round(newProps.y + dy);
-        render(object);
+        render(object, false);
       });
     }
     renderOrder();
@@ -514,16 +548,16 @@ document.addEventListener("mousemove", function(event) {
     lastMouseDragY = y;
   }
 });
-document.addEventListener("mouseup", function(event) {
-  if (draggingMode === DRAG_RECTANGLE_SELECT) {
-    draggingMode = DRAG_NONE;
+document.addEventListener("mouseup", function() {
+  if (draggingMode === DragMode.RECTANGLE_SELECT) {
+    draggingMode = DragMode.NONE;
     renderSelectionRectangle();
-  } else if (draggingMode === DRAG_MOVE_SELECTION) {
-    draggingMode = DRAG_NONE;
+  } else if (draggingMode === DragMode.MOVE_SELECTION) {
+    draggingMode = DragMode.NONE;
     // snap to grid
-    for (var id in selectedObjectIdToNewProps) {
-      var object = objectsById[id];
-      var newProps = selectedObjectIdToNewProps[id];
+    for (let id in selectedObjectIdToNewProps) {
+      let object = objectsById[id];
+      let newProps = selectedObjectIdToNewProps[id];
       if (snapToSnapZones(object, newProps)) {
         render(object, true);
       }
@@ -534,28 +568,28 @@ document.addEventListener("mouseup", function(event) {
   }
 });
 
-function setHoverObject(object) {
-  if (hoverObject == object) return;
+function setHoverObject(object: ObjectState | null) {
+  if (hoverObject === object) return;
   hoverObject = object;
   setHoverDiv(hoverObject != null ? getObjectDiv(hoverObject.id) : null);
 }
-function setHoverDiv(div) {
-  if (hoverDiv == div) return;
+function setHoverDiv(div: HTMLDivElement | null) {
+  if (hoverDiv === div) return;
   if (hoverDiv != null) hoverDiv.classList.remove("hoverSelect");
   hoverDiv = div;
   if (hoverDiv != null) hoverDiv.classList.add("hoverSelect");
 }
-function setSelectedObjects(objects) {
-  for (var id in selectedObjectIdToNewProps) {
-    var objectDiv = getObjectDiv(id);
+function setSelectedObjects(objects: ObjectState[]) {
+  for (let id in selectedObjectIdToNewProps) {
+    let objectDiv = getObjectDiv(id);
     objectDiv.classList.remove("selected");
   }
   selectedObjectIdToNewProps = {};
   objects.forEach(function(object) {
     selectedObjectIdToNewProps[object.id] = newPropsForObject(object);
   });
-  for (var id in selectedObjectIdToNewProps) {
-    var objectDiv = getObjectDiv(id);
+  for (let id in selectedObjectIdToNewProps) {
+    let objectDiv = getObjectDiv(id);
     objectDiv.classList.add("selected");
   }
 
@@ -569,7 +603,7 @@ function setSelectedObjects(objects) {
     }
   }
 }
-function newPropsForObject(object) {
+function newPropsForObject(object: ObjectState): ObjectTempProps {
   return {
     x: object.x,
     y: object.y,
@@ -577,22 +611,22 @@ function newPropsForObject(object) {
     faceIndex: object.faceIndex,
   };
 }
-function getEffectiveSelection(objects) {
+function getEffectiveSelection(): {[index: ObjectId]: ObjectTempProps} {
   // if you make changes, call renderAndMaybeCommitSelection
   if (Object.keys(selectedObjectIdToNewProps).length > 0) return selectedObjectIdToNewProps;
   if (hoverObject != null) {
-    var effectiveSelection = {};
-    effectiveSelection[hoverObject.id] = newPropsForObject(hoverObject);
-    return effectiveSelection;
+    return {
+      [hoverObject.id]: newPropsForObject(hoverObject),
+    };
   }
   return {};
 }
-function renderAndMaybeCommitSelection(selection, isAnimated) {
-  var objectsToRender = [];
+function renderAndMaybeCommitSelection(selection: {[index: ObjectId]: ObjectTempProps}, isAnimated: boolean) {
+  let objectsToRender: ObjectState[] = [];
   // render
-  for (var id in selection) {
-    var object = objectsById[id];
-    var newProps = selection[id];
+  for (let id in selection) {
+    let object = objectsById[id];
+    let newProps = selection[id];
     if (!(object.x === newProps.x &&
           object.y === newProps.y &&
           object.z === newProps.z &&
@@ -600,7 +634,7 @@ function renderAndMaybeCommitSelection(selection, isAnimated) {
       objectsToRender.push(object);
     }
   }
-  if (draggingMode === DRAG_NONE) {
+  if (draggingMode === DragMode.NONE) {
     // if we're dragging, don't commit yet
     commitSelection(selection);
   }
@@ -612,12 +646,12 @@ function renderAndMaybeCommitSelection(selection, isAnimated) {
   // it's too late to use this
   consumeNumberModifier();
 }
-function commitSelection(selection) {
-  var move = [];
-  move.push(myUser.id);
-  for (var id in selection) {
-    var object = objectsById[id];
-    var newProps = selection[id];
+function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
+  let move: any[] = []; // TODO
+  move.push(myUser!.id);
+  for (let id in selection) {
+    let object = objectsById[id];
+    let newProps = selection[id];
     if (object.x         !== newProps.x         ||
         object.y         !== newProps.y         ||
         object.z         !== newProps.z         ||
@@ -651,14 +685,14 @@ function commitSelection(selection) {
     }
   }
   if (move.length <= 1) return;
-  var message = {
+  let message = {
     cmd: "makeAMove",
     args: move,
   };
   sendMessage(message);
   pushChangeToHistory(move);
 }
-function pushObjectProps(move, object) {
+function pushObjectProps(move: any[], object: ObjectState) { // TODO
   move.push(
     object.id,
     object.prototype,
@@ -667,8 +701,8 @@ function pushObjectProps(move, object) {
     object.z,
     object.faceIndex);
 }
-var objectPropCount = 6;
-function consumeObjectProps(move, i) {
+const objectPropCount = 6;
+function consumeObjectProps(move: any[], i: number): ObjectState { // TODO
   let object = makeObject(
     move[i++], // id
     move[i++], // prototypeId
@@ -680,22 +714,22 @@ function consumeObjectProps(move, i) {
   return object;
 }
 
-var SHIFT = 1;
-var CTRL = 2;
-var ALT = 4;
-function getModifierMask(event) {
+const SHIFT = 1;
+const CTRL = 2;
+const ALT = 4;
+function getModifierMask(event: MouseEvent | KeyboardEvent) {
   return (
     (event.shiftKey ? SHIFT : 0) |
     (event.ctrlKey ? CTRL : 0) |
     (event.altKey ? ALT : 0)
   );
 }
-document.addEventListener("keydown", function(event) {
+document.addEventListener("keydown", function(event: KeyboardEvent) {
   if (dialogIsOpen) {
     if (event.keyCode === 27) closeDialog();
     return;
   }
-  var modifierMask = getModifierMask(event);
+  let modifierMask = getModifierMask(event);
   switch (event.keyCode) {
     case "R".charCodeAt(0):
       if (modifierMask === 0) { rollSelection(); break; }
@@ -711,15 +745,15 @@ document.addEventListener("keydown", function(event) {
       return;
     case 27: // Escape
       if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
-      if (modifierMask === 0 && draggingMode === DRAG_MOVE_SELECTION) { cancelMove(); break; }
-      if (modifierMask === 0 && draggingMode === DRAG_NONE)           { setSelectedObjects([]); break; }
+      if (modifierMask === 0 && draggingMode === DragMode.MOVE_SELECTION) { cancelMove(); break; }
+      if (modifierMask === 0 && draggingMode === DragMode.NONE)           { setSelectedObjects([]); break; }
       return;
     case 46: // Delete
       if (modifierMask === 0) { deleteSelection(); break; }
       return;
     case "Z".charCodeAt(0):
-      if (draggingMode === DRAG_NONE && modifierMask === CTRL)         { undo(); break; }
-      if (draggingMode === DRAG_NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
+      if (draggingMode === DragMode.NONE && modifierMask === CTRL)         { undo(); break; }
+      if (draggingMode === DragMode.NONE && modifierMask === (CTRL|SHIFT)) { redo(); break; }
       if (modifierMask === 0)     { examineSingle(); break; }
       if (modifierMask === SHIFT) { examineMulti(); break; }
       return;
@@ -732,7 +766,7 @@ document.addEventListener("keydown", function(event) {
 
     case 48: case 49: case 50: case 51: case 52:  case 53:  case 54:  case 55:  case 56:  case 57:  // number keys
     case 96: case 97: case 98: case 99: case 100: case 101: case 102: case 103: case 104: case 105: // numpad
-      var numberValue = event.keyCode < 96 ? event.keyCode - 48 : event.keyCode - 96;
+      let numberValue = event.keyCode < 96 ? event.keyCode - 48 : event.keyCode - 96;
       if (modifierMask === 0) { typeNumber(numberValue); break; }
       return;
 
@@ -740,8 +774,8 @@ document.addEventListener("keydown", function(event) {
   }
   event.preventDefault();
 });
-document.addEventListener("keyup", function(event) {
-  var modifierMask = getModifierMask(event);
+document.addEventListener("keyup", function(event: KeyboardEvent) {
+  let modifierMask = getModifierMask(event);
   switch (event.keyCode) {
     case "Z".charCodeAt(0):
       unexamine();
@@ -755,9 +789,9 @@ document.addEventListener("keyup", function(event) {
 });
 
 function startAccordion() {
-  if (draggingMode !== DRAG_MOVE_SELECTION) return;
+  if (draggingMode !== DragMode.MOVE_SELECTION) return;
   accordionMouseStartX = lastMouseDragX;
-  for (var id in selectedObjectIdToNewProps) {
+  for (let id in selectedObjectIdToNewProps) {
     // they're all the same
     accordionObjectStartX = selectedObjectIdToNewProps[id].x;
     break;
@@ -769,10 +803,10 @@ function stopAccordion() {
 }
 
 function flipOverSelection() {
-  var selection = getEffectiveSelection();
-  for (var id in selection) {
-    var object = objectsById[id];
-    var newProps = selection[id];
+  let selection = getEffectiveSelection();
+  for (let id in selection) {
+    let object = objectsById[id];
+    let newProps = selection[id];
     newProps.faceIndex += 1;
     if (object.faces.length === newProps.faceIndex) {
       newProps.faceIndex = 0;
@@ -782,23 +816,23 @@ function flipOverSelection() {
   renderOrder();
 }
 function rollSelection() {
-  var selection = getEffectiveSelection();
-  for (var id in selection) {
-    var object = objectsById[id];
-    var newProps = selection[id];
+  let selection = getEffectiveSelection();
+  for (let id in selection) {
+    let object = objectsById[id];
+    let newProps = selection[id];
     newProps.faceIndex = Math.floor(Math.random() * object.faces.length);
   }
   renderAndMaybeCommitSelection(selection, false);
   renderOrder();
 }
 function cancelMove() {
-  var selection = selectedObjectIdToNewProps;
-  for (var id in selection) {
-    var object = objectsById[id];
+  let selection = selectedObjectIdToNewProps;
+  for (let id in selection) {
+    let object = objectsById[id];
     if (object.temporary) {
       deleteObject(id);
     } else {
-      var newProps = selection[id];
+      let newProps = selection[id];
       newProps.x = object.x;
       newProps.y = object.y;
       newProps.z = object.z;
@@ -806,19 +840,19 @@ function cancelMove() {
       render(object, true);
     }
   }
-  draggingMode = DRAG_NONE;
+  draggingMode = DragMode.NONE;
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
 function deleteSelection() {
-  var selection = getEffectiveSelection();
-  var objects = [];
-  for (var id in selection) {
+  let selection = getEffectiveSelection();
+  let objects: ObjectState[] = [];
+  for (let id in selection) {
     objects.push(objectsById[id]);
   }
-  var partialDeletion = false;
-  var numberModifier = consumeNumberModifier();
+  let partialDeletion = false;
+  let numberModifier = consumeNumberModifier();
   if (numberModifier != null && numberModifier < objects.length) {
     // only delete the top N objects
     objects.sort(compareZ);
@@ -826,7 +860,7 @@ function deleteSelection() {
     partialDeletion = true;
   }
 
-  var move = [];
+  let move: any[] = []; // TODO
   objects.forEach(function(object) {
     if (!object.temporary) {
       move.push("d"); // delete
@@ -835,24 +869,24 @@ function deleteSelection() {
     deleteObject(object.id);
   });
   if (move.length > 0) {
-    move.unshift(myUser.id);
+    move.unshift(myUser!.id);
     sendMessage({cmd:"makeAMove", args:move});
     pushChangeToHistory(move);
   }
 
-  if (draggingMode === DRAG_MOVE_SELECTION && !partialDeletion) draggingMode = DRAG_NONE;
+  if (draggingMode === DragMode.MOVE_SELECTION && !partialDeletion) draggingMode = DragMode.NONE;
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
 function shuffleSelection() {
-  var selection;
+  let selection: {[index: ObjectId]: ObjectTempProps} | null = null;
   if (Object.keys(selectedObjectIdToNewProps).length > 0) {
     // real selection
     selection = selectedObjectIdToNewProps;
   } else if (hoverObject != null) {
     // select all objects we're hovering over in this stack
-    var stackId = getStackId(hoverObject, hoverObject);
+    let stackId = getStackId(hoverObject, hoverObject);
     selection = {};
     getObjects().forEach(function(object) {
       if (stackId !== getStackId(object, object)) return;
@@ -863,15 +897,15 @@ function shuffleSelection() {
     return;
   }
 
-  var newPropsArray = [];
-  for (var id in selection) {
+  let newPropsArray: ObjectTempProps[] = [];
+  for (let id in selection) {
     newPropsArray.push(selection[id]);
   }
-  for (var i = 0; i < newPropsArray.length; i++) {
-    var otherIndex = Math.floor(Math.random() * (newPropsArray.length - i)) + i;
-    var tempX = newPropsArray[i].x;
-    var tempY = newPropsArray[i].y;
-    var tempZ = newPropsArray[i].z;
+  for (let i = 0; i < newPropsArray.length; i++) {
+    let otherIndex = Math.floor(Math.random() * (newPropsArray.length - i)) + i;
+    let tempX = newPropsArray[i].x;
+    let tempY = newPropsArray[i].y;
+    let tempZ = newPropsArray[i].z;
     newPropsArray[i].x = newPropsArray[otherIndex].x;
     newPropsArray[i].y = newPropsArray[otherIndex].y;
     newPropsArray[i].z = newPropsArray[otherIndex].z;
@@ -884,46 +918,46 @@ function shuffleSelection() {
   resizeTableToFitEverything();
 }
 function groupSelection() {
-  var selection = getEffectiveSelection();
-  var selectionLength = Object.keys(selection).length;
+  let selection = getEffectiveSelection();
+  let selectionLength = Object.keys(selection).length;
   if (selectionLength <= 1) return;
   // find the weighted center (average location)
-  var totalX = 0;
-  var totalY = 0;
-  for (var id in selection) {
-    var newProps = selection[id];
+  let totalX = 0;
+  let totalY = 0;
+  for (let id in selection) {
+    let newProps = selection[id];
     totalX += newProps.x;
     totalY += newProps.y;
   }
   // who is closest to the weighted center?
-  var averageX = totalX / selectionLength;
-  var averageY = totalY / selectionLength;
-  var medianNewProps = null;
-  var shortestDistanceSquared = Infinity;
-  for (var id in selection) {
-    var newProps = selection[id];
-    var dx = newProps.x - averageX;
-    var dy = newProps.y - averageY;
-    var distanceSquared = dx * dx + dy * dy;
+  let averageX = totalX / selectionLength;
+  let averageY = totalY / selectionLength;
+  let medianNewProps: ObjectTempProps | null = null;
+  let shortestDistanceSquared = Infinity;
+  for (let id in selection) {
+    let newProps = selection[id];
+    let dx = newProps.x - averageX;
+    let dy = newProps.y - averageY;
+    let distanceSquared = dx * dx + dy * dy;
     if (distanceSquared < shortestDistanceSquared) {
       shortestDistanceSquared = distanceSquared;
       medianNewProps = newProps;
     }
   }
   // everybody move to the center
-  for (var id in selection) {
-    var newProps = selection[id];
-    newProps.x = medianNewProps.x;
-    newProps.y = medianNewProps.y;
+  for (let id in selection) {
+    let newProps = selection[id];
+    newProps.x = medianNewProps!.x;
+    newProps.y = medianNewProps!.y;
   }
   renderAndMaybeCommitSelection(selection, true);
   renderOrder();
   resizeTableToFitEverything();
 }
 function examineSingle() {
-  if (examiningMode === EXAMINE_SINGLE) return; // ignore key repeat
+  if (examiningMode === ExamineMode.SINGLE) return; // ignore key repeat
   unexamine();
-  examiningMode = EXAMINE_SINGLE;
+  examiningMode = ExamineMode.SINGLE;
   examiningObjectsById = {};
   if (hoverObject == null) return;
   // ignore the newProps in selectedObjectIdToNewProps, because it doesn't really matter
@@ -931,20 +965,20 @@ function examineSingle() {
   renderExaminingObjects();
 }
 function examineMulti() {
-  if (examiningMode === EXAMINE_MULTI) return;
+  if (examiningMode === ExamineMode.MULTI) return;
   unexamine();
-  examiningMode = EXAMINE_MULTI;
+  examiningMode = ExamineMode.MULTI;
 
-  var selection;
+  let selection: {[index: ObjectId]: ObjectTempProps} | null = null;
   if (Object.keys(selectedObjectIdToNewProps).length > 0) {
     // real selection
     selection = selectedObjectIdToNewProps;
   } else if (hoverObject != null) {
     // choose all objects overlapping the hover object
-    var hoverX = hoverObject.x;
-    var hoverY = hoverObject.y;
-    var hoverWidth  = hoverObject.width;
-    var hoverHeight = hoverObject.height;
+    let hoverX = hoverObject.x;
+    let hoverY = hoverObject.y;
+    let hoverWidth  = hoverObject.width;
+    let hoverHeight = hoverObject.height;
     selection = {};
     getObjects().forEach(function(object) {
       if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
@@ -963,24 +997,25 @@ function examineMulti() {
   renderExaminingObjects();
 }
 function unexamine() {
-  if (examiningMode === EXAMINE_NONE) return;
-  examiningMode = EXAMINE_NONE;
-  var selection = examiningObjectsById;
+  if (examiningMode === ExamineMode.NONE) return;
+  examiningMode = ExamineMode.NONE;
+  let selection = examiningObjectsById;
   examiningObjectsById = {};
-  for (var id in selection) {
+  for (let id in selection) {
     render(objectsById[id], true);
   }
   renderOrder();
 }
 
-var numberTypingBuffer = "";
-function typeNumber(numberValue) {
-  numberTypingBuffer += numberValue;
+let numberTypingBuffer = "";
+function typeNumber(numberValue: number) {
+  if (numberTypingBuffer.length >= 3) return; // 999 is the max.
+  numberTypingBuffer += String(numberValue);
   renderNumberBuffer();
 }
-function consumeNumberModifier() {
+function consumeNumberModifier(): number | null {
   if (numberTypingBuffer.length === 0) return null;
-  var result = parseInt(numberTypingBuffer, 10);
+  let result = parseInt(numberTypingBuffer, 10);
   numberTypingBuffer = "";
   renderNumberBuffer();
   return result;
@@ -990,8 +1025,8 @@ function clearNumberBuffer() {
   renderNumberBuffer();
 }
 
-var isHelpShown = true;
-var isHelpMouseIn = false;
+let isHelpShown = true;
+let isHelpMouseIn = false;
 function toggleHelp() {
   isHelpShown = !isHelpShown;
   renderHelp();
@@ -999,7 +1034,7 @@ function toggleHelp() {
 const topRightDiv = document.getElementById("topRightDiv") as HTMLDivElement;
 const helpDiv = document.getElementById("helpDiv") as HTMLDivElement;
 helpDiv.addEventListener("mousemove", function() {
-  if (draggingMode !== DRAG_NONE) return;
+  if (draggingMode !== DragMode.NONE) return;
   isHelpMouseIn = true;
   renderHelp();
 });
@@ -1015,7 +1050,7 @@ function renderHelp() {
   }
 }
 
-var showCloset = false;
+let showCloset = false;
 
 const closetDiv = document.getElementById("closetDiv") as HTMLDivElement;
 const closetShowHideButton = document.getElementById("closetShowHideButton") as HTMLParagraphElement;
@@ -1037,42 +1072,44 @@ function renderCloset() {
     // TODO: show groups with items
     return closetObject.closetName != null;
   }).map(function(closetObject) {
-    var id        = closetObject.id;
-    var name      = closetObject.closetName;
-    var thumbnail = closetObject.thumbnail       || closetObject.faces[0];
-    var width     = closetObject.thumbnailWidth  || 25;
-    var height    = closetObject.thumbnailHeight || 25;
+    let id        = closetObject.id;
+    let name      = closetObject.closetName!;
+    let thumbnail = closetObject.thumbnail       || closetObject.faces[0];
+    let width     = closetObject.thumbnailWidth  || 25;
+    let height    = closetObject.thumbnailHeight || 25;
+    // TODO: sanitize?
     return '<li data-id="'+id+'"><img src="'+thumbnail+'" width='+width+' height='+height+'>'+name+'</li>';
   }).join("");
-  var fakeArray = closetUl.getElementsByTagName("li");
-  for (var i = 0; i < fakeArray.length; i++) {
-    var li = fakeArray[i];
+  let collection = closetUl.getElementsByTagName("li");
+  for (let i = 0; i < collection.length; i++) {
+    let li = collection[i] as HTMLLIElement;
     li.addEventListener("mousedown", onClosetObjectMouseDown);
     li.addEventListener("mousemove", onClosetObjectMouseMove);
     li.addEventListener("mouseout",  onClosetObjectMouseOut);
   }
 }
-function onClosetObjectMouseDown(event) {
+function onClosetObjectMouseDown(event: MouseEvent) {
   if (event.button !== 0) return;
-  if (examiningMode !== EXAMINE_NONE) return;
+  if (examiningMode !== ExamineMode.NONE) return;
   event.preventDefault();
   event.stopPropagation();
-  var x = this.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
-  var y = this.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
-  var closetId = this.dataset.id;
-  var closetObject = databaseById[closetId];
-  var prototypeIds = closetObject.items;
+  let li = event.currentTarget as HTMLLIElement;
+  let x = li.getBoundingClientRect().left - tableDiv.getBoundingClientRect().left;
+  let y = li.getBoundingClientRect().top  - tableDiv.getBoundingClientRect().top;
+  let closetId = li.dataset.id as DbEntryId;
+  let closetObject = databaseById[closetId];
+  let prototypeIds = closetObject.items;
   if (prototypeIds == null) {
     prototypeIds = [closetObject.id];
   }
 
   // create temporary objects
-  var numberModifier = consumeNumberModifier();
+  let numberModifier = consumeNumberModifier();
   if (numberModifier == null) numberModifier = 1;
-  var stackOfObjects = [];
-  var z = findMaxZ();
+  let stackOfObjects: ObjectState[] = [];
+  let z = findMaxZ();
   z++;
-  for (var i = 0; i < numberModifier; i++) {
+  for (let i = 0; i < numberModifier; i++) {
     prototypeIds.forEach(function(prototypeId) {
       stackOfObjects.push(makeTemporaryObject(prototypeId, x, y, z++));
     });
@@ -1080,26 +1117,26 @@ function onClosetObjectMouseDown(event) {
   setSelectedObjects(stackOfObjects);
 
   // begin drag
-  draggingMode = DRAG_MOVE_SELECTION;
+  draggingMode = DragMode.MOVE_SELECTION;
   lastMouseDragX = eventToMouseX(event, tableDiv);
   lastMouseDragY = eventToMouseY(event, tableDiv);
 
   // bring selection to top
   bringSelectionToTop();
 }
-function onClosetObjectMouseMove(event) {
-  if (draggingMode != DRAG_NONE) return;
-  setHoverDiv(this);
+function onClosetObjectMouseMove(event: MouseEvent) {
+  if (draggingMode != DragMode.NONE) return;
+  setHoverDiv(event.currentTarget as HTMLDivElement);
 }
-function onClosetObjectMouseOut(event) {
-  if (hoverDiv === this) {
+function onClosetObjectMouseOut(event: MouseEvent) {
+  if (hoverDiv === event.currentTarget) {
     setHoverDiv(null);
   }
 }
 
-function makeTemporaryObject(prototypeId, x, y, z) {
-  var id = generateRandomId();
-  var object = makeObject(id, prototypeId, x, y, z, 0);
+function makeTemporaryObject(prototypeId: DbEntryId, x: number, y: number, z: number): ObjectState {
+  let id = generateRandomId();
+  let object = makeObject(id, prototypeId, x, y, z, 0);
   object.temporary = true;
   object.locked = false;
   registerObject(object);
@@ -1109,29 +1146,29 @@ function makeTemporaryObject(prototypeId, x, y, z) {
 
 function undo() { undoOrRedo(changeHistory, futureChanges); }
 function redo() { undoOrRedo(futureChanges, changeHistory); }
-function undoOrRedo(thePast, theFuture) {
-  consumeNumberModifier();
+function undoOrRedo(thePast: MakeAMoveArgs[], theFuture: MakeAMoveArgs[]) {
+  consumeNumberModifier(); // ignore.
   if (thePast.length === 0) return;
-  var newMove = reverseChange(thePast.pop());
+  let newMove = reverseChange(thePast.pop());
   sendMessage({cmd:"makeAMove", args:newMove});
   theFuture.push(newMove);
 }
-function reverseChange(move) {
-  var newMove = [myUser.id];
-  var i = 0;
-  move[i++]; // userId
+function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
+  let newMove: MakeAMoveArgs = [myUser!.id];
+  let i = 0;
+  move[i++]; // ignore userId
   while (i < move.length) {
-    var actionCode = move[i++];
+    let actionCode = move[i++];
     switch (actionCode) {
       case "c": // create -> delete
-        var object = consumeObjectProps(move, i);
+        let object = consumeObjectProps(move, i);
         i += objectPropCount;
         newMove.push("d"); // delete
         pushObjectProps(newMove, object);
         deleteObject(object.id);
         break;
       case "d": // delete -> create
-        var object = consumeObjectProps(move, i);
+        let object = consumeObjectProps(move, i);
         i += objectPropCount;
         newMove.push("c"); // create
         pushObjectProps(newMove, object);
@@ -1139,20 +1176,20 @@ function reverseChange(move) {
         render(object, true);
         break;
       case "m": // move -> move
-        var object = objectsById[move[i++]];
-        var fromX         =      move[i++];
-        var fromY         =      move[i++];
-        var fromZ         =      move[i++];
-        var fromFaceIndex =      move[i++];
-        var   toX         =      move[i++];
-        var   toY         =      move[i++];
-        var   toZ         =      move[i++];
-        var   toFaceIndex =      move[i++];
+        let object = objectsById[move[i++]];
+        let fromX         =      move[i++];
+        let fromY         =      move[i++];
+        let fromZ         =      move[i++];
+        let fromFaceIndex =      move[i++];
+        let   toX         =      move[i++];
+        let   toY         =      move[i++];
+        let   toZ         =      move[i++];
+        let   toFaceIndex =      move[i++];
         object.x         = fromX;
         object.y         = fromY;
         object.z         = fromZ;
         object.faceIndex = fromFaceIndex;
-        var newProps = selectedObjectIdToNewProps[object.id];
+        let newProps = selectedObjectIdToNewProps[object.id];
         if (newProps != null) {
           newProps.x         = object.x;
           newProps.y         = object.y;
@@ -1179,59 +1216,59 @@ function reverseChange(move) {
 
   return newMove;
 }
-function pushChangeToHistory(change) {
+function pushChangeToHistory(change: MakeAMoveArgs) {
   changeHistory.push(change);
   futureChanges = [];
 }
 
-function eventToMouseX(event, div) { return event.clientX - div.getBoundingClientRect().left; }
-function eventToMouseY(event, div) { return event.clientY - div.getBoundingClientRect().top; }
+function eventToMouseX(event: MouseEvent, div: HTMLDivElement) { return event.clientX - div.getBoundingClientRect().left; }
+function eventToMouseY(event: MouseEvent, div: HTMLDivElement) { return event.clientY - div.getBoundingClientRect().top; }
 
 const userListUl = document.getElementById("userListUl") as HTMLUListElement;
 function renderUserList() {
-  var userIds = Object.keys(usersById);
+  let userIds = Object.keys(usersById);
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
     return (
-      '<li'+(userId === myUser.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
+      '<li'+(userId === myUser!.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
         sanitizeHtml(usersById[userId].userName) +
       '</li>');
   }).join("");
 
   getObjects().forEach(function(object) {
     if (object.labelPlayerName === "") return;
-    var userName = null;
-    if (object.labelPlayerName === myUser.role) {
+    let userName: string | null = null;
+    if (object.labelPlayerName === myUser!.role) {
       userName = "You";
     } else {
-      for (var i = 0; i < userIds.length; i++) {
+      for (let i = 0; i < userIds.length; i++) {
         if (usersById[userIds[i]].role === object.labelPlayerName) {
           userName = usersById[userIds[i]].userName;
           break;
         }
       }
     }
-    var roleName = null;
-    for (var i = 0; i < gameDefinition.roles.length; i++) {
+    let roleName: string | null = null;
+    for (let i = 0; i < gameDefinition.roles.length; i++) {
       if (gameDefinition.roles[i].id === object.labelPlayerName) {
         roleName = gameDefinition.roles[i].name;
         break;
       }
     }
-    var labelText;
+    let labelText: string | null = null;
     if (userName != null) {
       labelText = userName + " ("+roleName+")";
     } else {
       labelText = roleName;
     }
-    var stackHeightDiv = getStackHeightDiv(object.id);
+    let stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.textContent = labelText;
     stackHeightDiv.style.display = "block";
   });
   const myUserNameLi = document.getElementById("myUserNameLi") as HTMLLIElement;
   myUserNameLi.addEventListener("click", showEditUserDialog);
 }
-var dialogIsOpen = false;
+let dialogIsOpen = false;
 const modalMaskDiv = document.getElementById("modalMaskDiv") as HTMLDivElement;
 modalMaskDiv.addEventListener("mousedown", closeDialog);
 const editUserDiv = document.getElementById("editUserDiv") as HTMLDivElement;
@@ -1239,11 +1276,11 @@ function showEditUserDialog() {
   modalMaskDiv.style.display = "block";
   editUserDiv.style.display = "block";
 
-  yourNameTextbox.value = myUser.userName;
+  yourNameTextbox.value = myUser!.userName;
   yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition.roles.map(function(role) {
     return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
   }).join("");
-  yourRoleDropdown.value = myUser.role;
+  yourRoleDropdown.value = myUser!.role;
 
   dialogIsOpen = true;
   yourNameTextbox.focus();
@@ -1272,30 +1309,30 @@ yourNameTextbox.addEventListener("keydown", function(event) {
 const submitYourNameButton = document.getElementById("submitYourNameButton") as HTMLInputElement;
 submitYourNameButton.addEventListener("click", submitYourName);
 function submitYourName() {
-  var newName = yourNameTextbox.value;
-  if (newName && newName !== myUser.userName) {
+  let newName = yourNameTextbox.value;
+  if (newName && newName !== myUser!.userName) {
     sendMessage({
       cmd: "changeMyName",
       args: newName,
     });
     // anticipate
-    myUser.userName = newName;
+    myUser!.userName = newName;
     renderUserList();
   }
 }
 const yourRoleDropdown = document.getElementById("yourRoleDropdown") as HTMLSelectElement;
 yourRoleDropdown.addEventListener("change", function() {
   setTimeout(function() {
-    var role = yourRoleDropdown.value;
+    let role = yourRoleDropdown.value;
     sendMessage({
       cmd: "changeMyRole",
       args: role,
     });
     // anticipate
-    myUser.role = role;
+    myUser!.role = role;
     renderUserList();
     // hide/show objects
-    getObjects().forEach(object => render(object));
+    getObjects().forEach(object => render(object, false));
     fixFloatingThingZ();
   }, 0);
 });
@@ -1309,13 +1346,13 @@ moveLockedObjectsModeCheckbox.addEventListener("click", function() {
 });
 
 
-function render(object, isAnimated) {
+function render(object: ObjectState, isAnimated: boolean) {
   if (object.id in examiningObjectsById) return; // different handling for this
-  var x = object.x;
-  var y = object.y;
-  var z = object.z;
-  var faceIndex = object.faceIndex;
-  var newProps = selectedObjectIdToNewProps[object.id];
+  let x = object.x;
+  let y = object.y;
+  let z = object.z;
+  let faceIndex = object.faceIndex;
+  let newProps = selectedObjectIdToNewProps[object.id];
   if (newProps != null) {
     x = newProps.x;
     y = newProps.y;
@@ -1325,16 +1362,16 @@ function render(object, isAnimated) {
   if (object.locked) {
     z = 0;
   } else {
-    for (var i = 0; i < hiderContainers.length; i++) {
-      var hiderContainer = hiderContainers[i];
+    for (let i = 0; i < hiderContainers.length; i++) {
+      let hiderContainer = hiderContainers[i];
       if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
-        if (hiderContainer.visionWhitelist.indexOf(myUser.role) === -1) {
+        if (hiderContainer.visionWhitelist.indexOf(myUser!.role) === -1) {
           // blocked
-          var forbiddenFaces = hiderContainer.hideFaces;
-          var betterFaceIndex = -1;
-          for (var j = 0; j < object.faces.length; j++) {
-            var tryThisIndex = (faceIndex + j) % object.faces.length;
+          let forbiddenFaces = hiderContainer.hideFaces;
+          let betterFaceIndex = -1;
+          for (let j = 0; j < object.faces.length; j++) {
+            let tryThisIndex = (faceIndex + j) % object.faces.length;
             if (forbiddenFaces.indexOf(tryThisIndex) === -1) {
               betterFaceIndex = tryThisIndex;
               break;
@@ -1346,7 +1383,7 @@ function render(object, isAnimated) {
       }
     }
   }
-  var objectDiv = getObjectDiv(object.id);
+  let objectDiv = getObjectDiv(object.id);
   if (isAnimated) {
     objectDiv.classList.add("animatedMovement");
   } else {
@@ -1358,11 +1395,11 @@ function render(object, isAnimated) {
   objectDiv.style.height = object.height + "px";
   objectDiv.style.zIndex = z;
   if (object.faces.length > 0) {
-    var facePath = object.faces[faceIndex];
+    let facePath = object.faces[faceIndex];
     let {url} = parseFacePath(facePath);
     objectDiv.dataset.facePath = facePath;
     objectDiv.style.backgroundImage = `url(${url})`;
-    renderSize(object, objectDiv, object.width, object.height);
+    renderSize(objectDiv, object.width, object.height);
   } else if (object.backgroundColor !== "") {
     objectDiv.style.backgroundColor = object.backgroundColor.replace(/\$alpha/, "0.4");
     objectDiv.style.borderColor = "rgba(255,255,255,0.8)";
@@ -1378,7 +1415,7 @@ function render(object, isAnimated) {
   objectDiv.style.display = "block";
 
   if (object.backgroundColor !== "") {
-    var backgroundDiv = getBackgroundDiv(object.id);
+    let backgroundDiv = getBackgroundDiv(object.id);
     if (isAnimated) {
       backgroundDiv.classList.add("animatedMovement");
     } else {
@@ -1395,8 +1432,8 @@ function render(object, isAnimated) {
 }
 function renderExaminingObjects() {
   // sort by z order. bottom-to-top is left-to-right.
-  var objects = [];
-  for (var id in examiningObjectsById) {
+  let objects: ObjectState[] = [];
+  for (let id in examiningObjectsById) {
     objects.push(objectsById[id]);
   }
   objects.sort(function(a, b) {
@@ -1404,53 +1441,53 @@ function renderExaminingObjects() {
   });
 
   // how far in can we zoom?
-  var totalWidth = 0;
-  var maxHeight = 0;
+  let totalWidth = 0;
+  let maxHeight = 0;
   objects.forEach(function(object) {
     totalWidth += object.width;
     if (object.height > maxHeight) maxHeight = object.height;
   });
 
-  var windowWidth  = window.innerWidth;
-  var windowHeight = window.innerHeight;
-  var windowAspectRatio = windowWidth / windowHeight;
-  var objectsAspectRatio = totalWidth / maxHeight;
+  let windowWidth  = window.innerWidth;
+  let windowHeight = window.innerHeight;
+  let windowAspectRatio = windowWidth / windowHeight;
+  let objectsAspectRatio = totalWidth / maxHeight;
 
-  var bigHeight;
+  let bigHeight: number | null = null;
   if (windowAspectRatio < objectsAspectRatio) {
     bigHeight = windowWidth  / objectsAspectRatio;
   } else {
     bigHeight = windowHeight;
   }
-  var zoomFactor = bigHeight / maxHeight;
+  let zoomFactor = bigHeight / maxHeight;
   if (zoomFactor < 1.0) {
     // don't ever zoom out with this function. prefer overlapping objects.
     zoomFactor = 1.0;
     totalWidth = windowWidth;
   }
-  var averageWidth = totalWidth / objects.length;
+  let averageWidth = totalWidth / objects.length;
 
-  var maxZ = findMaxZ();
-  for (var i = 0; i < objects.length; i++) {
-    var object = objects[i];
-    var renderWidth  = object.width  * zoomFactor;
-    var renderHeight = object.height * zoomFactor;
-    var renderX = averageWidth * i * zoomFactor;
-    var renderY = (windowHeight - renderHeight) / 2;
-    var objectDiv = getObjectDiv(object.id);
+  let maxZ = findMaxZ();
+  for (let i = 0; i < objects.length; i++) {
+    let object = objects[i];
+    let renderWidth  = object.width  * zoomFactor;
+    let renderHeight = object.height * zoomFactor;
+    let renderX = averageWidth * i * zoomFactor;
+    let renderY = (windowHeight - renderHeight) / 2;
+    let objectDiv = getObjectDiv(object.id);
     objectDiv.classList.add("animatedMovement");
     objectDiv.style.left = (renderX + window.scrollX) + "px";
     objectDiv.style.top  = (renderY + window.scrollY) + "px";
-    renderSize(object, objectDiv, renderWidth, renderHeight);
+    renderSize(objectDiv, renderWidth, renderHeight);
     objectDiv.style.zIndex = maxZ + i + 3;
-    var stackHeightDiv = getStackHeightDiv(object.id);
+    let stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.style.display = "none";
   }
 }
-function renderSize(object, objectDiv, renderWidth, renderHeight) {
+function renderSize(objectDiv: HTMLDivElement, renderWidth: number, renderHeight: number) {
   objectDiv.style.width  = renderWidth  + "px";
   objectDiv.style.height = renderHeight + "px";
-  let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath);
+  let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath as ImagePath);
   if (x != null) {
     let scaleX = renderWidth  / width;
     let scaleY = renderHeight / height;
@@ -1464,27 +1501,29 @@ function renderSize(object, objectDiv, renderWidth, renderHeight) {
   }
 }
 function renderOrder() {
-  var sizeAndLocationToIdAndZList = {};
+  let sizeAndLocationToIdAndZList: {
+    [index: StackId]: {id: ObjectId, z: number}[],
+  } = {};
   getObjects().forEach(function(object) {
-    var newProps = selectedObjectIdToNewProps[object.id];
+    let newProps = selectedObjectIdToNewProps[object.id];
     if (newProps == null) newProps = object;
     if (object.labelPlayerName !== "") {
       // not really a stack height
       return;
     }
-    var key = getStackId(newProps, object);
-    var idAndZList = sizeAndLocationToIdAndZList[key];
+    let key = getStackId(newProps, object);
+    let idAndZList = sizeAndLocationToIdAndZList[key];
     if (idAndZList == null) idAndZList = sizeAndLocationToIdAndZList[key] = [];
     idAndZList.push({id:object.id, z:newProps.z});
   });
-  for (var key in sizeAndLocationToIdAndZList) {
-    var idAndZList = sizeAndLocationToIdAndZList[key];
+  for (let key in sizeAndLocationToIdAndZList) {
+    let idAndZList = sizeAndLocationToIdAndZList[key];
     idAndZList.sort(compareZ);
     idAndZList.forEach(function(idAndZ, i) {
       if (idAndZ.id in examiningObjectsById) return;
-      var stackHeightDiv = getStackHeightDiv(idAndZ.id);
+      let stackHeightDiv = getStackHeightDiv(idAndZ.id);
       if (i > 0) {
-        stackHeightDiv.textContent = (i + 1).toString();
+        stackHeightDiv.textContent = String(i + 1);
         stackHeightDiv.style.display = "block";
       } else {
         stackHeightDiv.style.display = "none";
@@ -1492,17 +1531,18 @@ function renderOrder() {
     });
   }
 }
-function getStackId(newProps, object) {
+type StackId = string; // rectangle x,y,w,h e.g. "12,34,45,67"
+function getStackId(newProps: ObjectTempProps | ObjectState, object: ObjectState): StackId {
   return [newProps.x, newProps.y, object.width, object.height].join(",");
 }
 const selectionRectangleDiv = document.getElementById("selectionRectangleDiv") as HTMLDivElement;
 function renderSelectionRectangle() {
-  if (draggingMode === DRAG_RECTANGLE_SELECT) {
-    var x = rectangleSelectStartX;
-    var y = rectangleSelectStartY;
-    var width  = rectangleSelectEndX - rectangleSelectStartX;
-    var height = rectangleSelectEndY - rectangleSelectStartY;
-    var borderWidth = parseInt(selectionRectangleDiv.style.borderWidth);
+  if (draggingMode === DragMode.RECTANGLE_SELECT) {
+    let x = rectangleSelectStartX;
+    let y = rectangleSelectStartY;
+    let width  = rectangleSelectEndX - rectangleSelectStartX;
+    let height = rectangleSelectEndY - rectangleSelectStartY;
+    let borderWidth = parseInt(selectionRectangleDiv.style.borderWidth);
     if (width >= 0) {
       width -= 2 * borderWidth;
     } else {
@@ -1537,15 +1577,15 @@ function renderNumberBuffer() {
 }
 function resizeTableToFitEverything() {
   // don't shrink the scrollable area while we're holding the thing that causes it to shrink
-  if (draggingMode === DRAG_MOVE_SELECTION) return;
+  if (draggingMode === DragMode.MOVE_SELECTION) return;
   // at least this minimum size
-  var maxX = 800;
-  var maxY = 800;
-  var padding = 8;
-  for (var id in objectsById) {
-    var object = objectsById[id];
-    var x = object.x + object.width  + padding;
-    var y = object.y + object.height + padding;
+  let maxX = 800;
+  let maxY = 800;
+  let padding = 8;
+  for (let id in objectsById) {
+    let object = objectsById[id];
+    let x = object.x + object.width  + padding;
+    let y = object.y + object.height + padding;
     if (x > maxX) maxX = x;
     if (y > maxY) maxY = y;
   }
@@ -1553,19 +1593,19 @@ function resizeTableToFitEverything() {
   tableDiv.style.height = maxY + "px";
 }
 
-function snapToSnapZones(object, newProps) {
+function snapToSnapZones(object: ObjectState, newProps: ObjectTempProps): boolean {
   objectsWithSnapZones.sort(compareZ);
-  for (var i = objectsWithSnapZones.length - 1; i >= 0; i--) {
-    var containerObject = objectsWithSnapZones[i];
-    var containerProps = selectedObjectIdToNewProps[containerObject.id] || containerObject;
-    for (var j = 0; j < containerObject.snapZones.length; j++) {
-      var snapZoneDefinition = containerObject.snapZones[j];
-      var snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
-      var snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
-      var snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObject.width;
-      var snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObject.height;
-      var cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
-      var cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
+  for (let i = objectsWithSnapZones.length - 1; i >= 0; i--) {
+    let containerObject = objectsWithSnapZones[i];
+    let containerProps = selectedObjectIdToNewProps[containerObject.id] || containerObject;
+    for (let j = 0; j < containerObject.snapZones.length; j++) {
+      let snapZoneDefinition = containerObject.snapZones[j];
+      let snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
+      let snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
+      let snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObject.width;
+      let snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObject.height;
+      let cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
+      let cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
       if (cellWidth  < object.width)  continue; // doesn't fit in the zone
       if (cellHeight < object.height) continue; // doesn't fit in the zone
       if (newProps.x >= containerProps.x + snapZoneX + snapZoneWidth)  continue; // way off right
@@ -1573,17 +1613,17 @@ function snapToSnapZones(object, newProps) {
       if (newProps.x + object.width  <= containerProps.x + snapZoneX)  continue; // way off left
       if (newProps.y + object.height <= containerProps.y + snapZoneY)  continue; // way off top
       // this is the zone for us
-      var relativeCenterX = newProps.x + object.width /2 - (containerProps.x + snapZoneX);
-      var relativeCenterY = newProps.y + object.height/2 - (containerProps.y + snapZoneY);
-      var modX = euclideanMod(relativeCenterX, cellWidth);
-      var modY = euclideanMod(relativeCenterY, cellHeight);
-      var divX = Math.floor(relativeCenterX / cellWidth);
-      var divY = Math.floor(relativeCenterY / cellHeight);
-      var newModX = clamp(modX, object.width /2, cellWidth  - object.width /2);
-      var newModY = clamp(modY, object.height/2, cellHeight - object.height/2);
+      let relativeCenterX = newProps.x + object.width /2 - (containerProps.x + snapZoneX);
+      let relativeCenterY = newProps.y + object.height/2 - (containerProps.y + snapZoneY);
+      let modX = euclideanMod(relativeCenterX, cellWidth);
+      let modY = euclideanMod(relativeCenterY, cellHeight);
+      let divX = Math.floor(relativeCenterX / cellWidth);
+      let divY = Math.floor(relativeCenterY / cellHeight);
+      let newModX = clamp(modX, object.width /2, cellWidth  - object.width /2);
+      let newModY = clamp(modY, object.height/2, cellHeight - object.height/2);
 
-      var inBoundsX = 0 <= relativeCenterX && relativeCenterX < snapZoneWidth;
-      var inBoundsY = 0 <= relativeCenterY && relativeCenterY < snapZoneHeight;
+      let inBoundsX = 0 <= relativeCenterX && relativeCenterX < snapZoneWidth;
+      let inBoundsY = 0 <= relativeCenterY && relativeCenterY < snapZoneHeight;
       if (!inBoundsX && !inBoundsY) {
         // on an outside corner. we need to pick an edge to rub.
         if (Math.abs(modX - newModX) > Math.abs(modY - newModY)) {
@@ -1602,40 +1642,35 @@ function snapToSnapZones(object, newProps) {
   return false;
 }
 
-function getObjects() {
-  var objects = [];
-  for (var objectId in objectsById) {
+function getObjects(): ObjectState[] {
+  let objects = [];
+  for (let objectId in objectsById) {
     objects.push(objectsById[objectId]);
   }
   return objects;
 }
-function getObjectsInZOrder() {
-  var objects = [];
-  objects.sort(compareZ);
-  return objects;
-}
-function compareZ(a, b) {
+function compareZ(a: {z: number}, b: {z: number}) {
   return operatorCompare(a.z, b.z);
 }
-function operatorCompare(a, b) {
+function operatorCompare(a: number, b: number) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function makeWebSocket() {
-  var host = location.host;
-  var pathname = location.pathname;
-  var isHttps = location.protocol === "https:";
-  var match = host.match(/^(.+):(\d+)$/);
-  var defaultPort = isHttps ? 443 : 80;
-  var port = match ? parseInt(match[2], 10) : defaultPort;
-  var hostName = match ? match[1] : host;
-  var wsProto = isHttps ? "wss:" : "ws:";
-  var wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
+function makeWebSocket(): WebSocket {
+  let host = location.host;
+  let pathname = location.pathname;
+  let isHttps = location.protocol === "https:";
+  let match = host.match(/^(.+):(\d+)$/);
+  let defaultPort = isHttps ? 443 : 80;
+  let port = match ? parseInt(match[2], 10) : defaultPort;
+  let hostName = match ? match[1] : host;
+  let wsProto = isHttps ? "wss:" : "ws:";
+  let wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
   return new WebSocket(wsUrl);
 }
 
-var socket;
-var isConnected = false;
+let socket: WebSocket | null = null;
+let isConnected = false;
 function connectToServer() {
   setScreenMode(ScreenMode.WAITING_FOR_SERVER_CONNECT);
 
@@ -1648,7 +1683,7 @@ function connectToServer() {
   function onOpen() {
     isConnected = true;
     console.log("connected");
-    var roomCodeToSend = roomCode;
+    let roomCodeToSend = roomCode;
     if (roomCode != null) {
       roomCodeToSend = roomCode;
       setScreenMode(ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION);
@@ -1663,11 +1698,11 @@ function connectToServer() {
       },
     });
   }
-  function onMessage(event) {
-    var msg = event.data;
+  function onMessage(event: MessageEvent) {
+    let msg = event.data;
     if (msg === "keepAlive") return;
     console.log(msg);
-    var message = JSON.parse(msg);
+    let message = JSON.parse(msg) as { cmd: string, args?: any };
     if (screenMode === ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
       // nice try
       disconnect();
@@ -1680,18 +1715,18 @@ function connectToServer() {
       case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
         if (message.cmd === "joinRoom") {
           setScreenMode(ScreenMode.PLAY);
-          let joinRoomArgs = message.args as JoinRoomArgs;
-          roomCode = joinRoomArgs.roomCode;
+          let args = message.args as JoinRoomArgs;
+          roomCode = args.roomCode;
           myUser = {
-            id: joinRoomArgs.userId,
-            userName: joinRoomArgs.userName,
-            role: joinRoomArgs.role,
+            id: args.userId,
+            userName: args.userName,
+            role: args.role,
           };
           usersById[myUser.id] = myUser;
-          joinRoomArgs.users.forEach(function(otherUser) {
+          args.users.forEach(function(otherUser) {
             usersById[otherUser.id] = otherUser;
           });
-          initGame(joinRoomArgs.database, joinRoomArgs.game, joinRoomArgs.history);
+          initGame(args.database, args.game, args.history);
           renderUserList();
         } else throw AssertionFailure;
         break;
@@ -1699,20 +1734,24 @@ function connectToServer() {
         if (message.cmd === "makeAMove") {
           makeAMove(message.args, true);
         } else if (message.cmd === "userJoined") {
-          usersById[message.args.id] = {
-            id: message.args.id,
-            userName: message.args.userName,
-            role: message.args.role,
+          let args = message.args as UserJoinedArgs;
+          usersById[args.id] = {
+            id: args.id,
+            userName: args.userName,
+            role: args.role,
           };
           renderUserList();
         } else if (message.cmd === "userLeft") {
-          delete usersById[message.args.id];
+          let args = message.args as UserLeftArgs;
+          delete usersById[args.id];
           renderUserList();
         } else if (message.cmd === "changeMyName") {
-          usersById[message.args.id].userName = message.args.userName;
+          let args = message.args as ChangeMyNameArgs;
+          usersById[args.id].userName = args.userName;
           renderUserList();
         } else if (message.cmd === "changeMyRole") {
-          usersById[message.args.id].role = message.args.role;
+          let args = message.args as ChangeMyRoleArgs;
+          usersById[args.id].role = args.role;
           renderUserList();
         }
         break;
@@ -1743,43 +1782,43 @@ function connectToServer() {
   }
 }
 
-function sendMessage(message) {
+function sendMessage(message: object) {
   socket.send(JSON.stringify(message));
 }
-function makeAMove(move, shouldRender) {
-  var objectsToRender = shouldRender ? [] : null;
-  var i = 0;
-  var userId = move[i++];
-  if (userId === myUser.id) return;
+function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
+  let objectsToRender: ObjectState[] = [];
+  let i = 0;
+  let userId = move[i++];
+  if (userId === myUser!.id) return;
   while (i < move.length) {
-    var actionCode = move[i++];
+    let actionCode = move[i++];
     switch (actionCode) {
       case "c": // create
-        var object = consumeObjectProps(move, i);
+        let object = consumeObjectProps(move, i);
         i += objectPropCount;
         registerObject(object);
         if (shouldRender) objectsToRender.push(object);
         break;
       case "d":
-        var object = consumeObjectProps(move, i);
+        let object = consumeObjectProps(move, i);
         i += objectPropCount;
         deleteObject(object.id);
         break;
       case "m": // move
-        var object = objectsById[move[i++]];
-        var fromX         =  move[i++];
-        var fromY         =  move[i++];
-        var fromZ         =  move[i++];
-        var fromFaceIndex =  move[i++];
-        var   toX         =  move[i++];
-        var   toY         =  move[i++];
-        var   toZ         =  move[i++];
-        var   toFaceIndex =  move[i++];
+        let object = objectsById[move[i++]];
+        let fromX         = move[i++];
+        let fromY         = move[i++];
+        let fromZ         = move[i++];
+        let fromFaceIndex = move[i++];
+        let   toX         = move[i++];
+        let   toY         = move[i++];
+        let   toZ         = move[i++];
+        let   toFaceIndex = move[i++];
         object.x = toX;
         object.y = toY;
         object.z = toZ;
         object.faceIndex = toFaceIndex;
-        var newProps = selectedObjectIdToNewProps[object.id];
+        let newProps = selectedObjectIdToNewProps[object.id];
         if (newProps != null) {
           newProps.x = toX;
           newProps.y = toY;
@@ -1793,9 +1832,7 @@ function makeAMove(move, shouldRender) {
   }
 
   if (shouldRender) {
-    objectsToRender.forEach(function(object) {
-      render(object, true);
-    });
+    objectsToRender.forEach(object => render(object, true));
     renderOrder();
     resizeTableToFitEverything();
     fixFloatingThingZ();
@@ -1803,11 +1840,11 @@ function makeAMove(move, shouldRender) {
   pushChangeToHistory(move);
 }
 
-function generateRandomId() {
-  var result = "";
-  for (var i = 0; i < 16; i++) {
-    var n = Math.floor(Math.random() * 16);
-    var c = n.toString(16);
+function generateRandomId(): ObjectId {
+  let result = "";
+  for (let i = 0; i < 16; i++) {
+    let n = Math.floor(Math.random() * 16);
+    let c = n.toString(16);
     result += c;
   }
   return result;
@@ -1815,40 +1852,27 @@ function generateRandomId() {
 function getObjectDiv(id) {
   return document.getElementById("object-" + id) as HTMLDivElement;
 }
-function getStackHeightDiv(id) {
+function getStackHeightDiv(id: ObjectId) {
   return document.getElementById("stackHeight-" + id) as HTMLDivElement;
 }
 function getBackgroundDiv(id) {
   return document.getElementById("background-" + id) as HTMLDivElement | null;
 }
-function setDivVisible(div, visible) {
+function setDivVisible(div: HTMLDivElement, visible: boolean) {
   div.style.display = visible ? "block" : "none";
 }
 
-function sanitizeHtml(text) {
+function sanitizeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 }
-function euclideanMod(numerator, denominator) {
+function euclideanMod(numerator: number, denominator: number): number {
   return (numerator % denominator + denominator) % denominator;
 }
-function clamp(n, min, max) {
+function clamp(n: number, min: number, max: number): number {
   if (n < min) return min;
   if (n > max) return max;
   return n;
 }
 
-function undefineNull(key, value) {
-  if (value == null) return undefined;
-  return value;
-}
-
-function httpGet(url, cb) {
-  var request = new XMLHttpRequest();
-  request.addEventListener("load", function() {
-    cb(request.responseText);
-  });
-  request.open("GET", url);
-  request.send();
-}
-
+// Done defining everything.
 setScreenMode(ScreenMode.LOGIN);
