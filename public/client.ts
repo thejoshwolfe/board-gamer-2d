@@ -1,110 +1,13 @@
-import {clamp, euclideanMod} from "./math.js";
+import {
+  connectToServer, sendMessage, getRoomCode,
+  getMyUserId, getMyUserRole, getMyUserDisplayName, setMyUserDisplayName, setMyUserRole,
+} from "./connection.js";
+import {clamp, euclideanMod, operatorCompare, programmerError} from "./math.js";
+import {
+  UserInfo, UserId, MakeAMoveArgs, DbEntry, DbEntryId, RoomState, ObjectState, ImagePath, ObjectId,
+} from "./protocol.js";
 
-interface UserJoinedArgs {
-  id: UserId,
-  userName: string,
-  role: RoleId,
-}
-interface UserLeftArgs {
-  id: UserId,
-}
-interface ChangeMyNameArgs {
-  id: UserId,
-  userName: string,
-}
-interface ChangeMyRoleArgs {
-  id: UserId,
-  role: RoleId,
-}
-
-interface JoinRoomArgs {
-  roomCode: string,
-  userId:   UserId,
-  userName: string,
-  role:     RoleId,
-  database: DbEntry[],
-  game:     RoomState,
-  history:  MakeAMoveArgs[],
-  users:    UserInfo[],
-}
-type MakeAMoveArgs = any; // TODO
-interface UserInfo {
-  id:       UserId,
-  userName: string,
-  role:     RoleId,
-}
-
-interface DbEntry {
-  id: DbEntryId,
-  // regular game object
-  width?: number,
-  height?: number,
-  faces?: ImagePath[],
-  // board
-  snapZones?: SnapZone[]
-  // closet properties
-  closetName?: string,
-  thumbnail?: ImagePath,
-  thumbnailWidth?: number,
-  thumbnailHeight?: number,
-  items?: DbEntryId[],
-  // screen
-  hideFaces?: number[],
-  visionWhitelist?: RoleId[],
-  labelPlayerName?: RoleId,
-  backgroundColor?: ColorWithParameterizedAlpha,
-}
-interface SnapZone {
-  x?: number,
-  y?: number,
-  width?: number,
-  height?: number,
-  cellWidth?: number,
-  cellHeight?: number,
-}
-
-interface RoomState {
-  roles: RoleDisplayNameBinding[],
-  objects: ObjectState[],
-}
-interface RoleDisplayNameBinding {
-  id: RoleId,
-  name: string,
-}
-interface ObjectState {
-  id: ObjectId,
-  prototype: DbEntryId,
-  width: number,
-  height: number,
-  locked: boolean,
-  temporary: boolean,
-
-  x: number,
-  y: number,
-  z: number,
-  faceIndex: number,
-
-  faces: ImagePath[],
-  snapZones: SnapZone[],
-  hideFaces: number[],
-  visionWhitelist: RoleId[],
-  labelPlayerName: RoleId | "",
-  backgroundColor: ColorWithParameterizedAlpha | "",
-}
-
-type DbEntryId = string;
-type ImagePath = string; // "path.png" or "path.png#x,y,w,h" where [xywh] are integers in base 10.
-type UserId = string;
-type RoleId = string;
-type ColorWithParameterizedAlpha = string; // e.g. "rgba(255,0,0,$alpha)"
-type ObjectId = string;
-
-function programmerError(msg?: string): never { throw new Error(msg); }
-
-let roomCode: string | null = null;
-let myUser: UserInfo | null = null;
-
-enum ScreenMode {
+export enum ScreenMode {
   DISCONNECTED,
   LOGIN,
   WAITING_FOR_SERVER_CONNECT,
@@ -113,11 +16,13 @@ enum ScreenMode {
   PLAY,
 }
 let screenMode = ScreenMode.LOGIN;
+export function getScreenMode() {
+  return screenMode;
+}
 
 const createRoomButton = document.getElementById("createRoomButton") as HTMLInputElement;
 createRoomButton.addEventListener("click", function() {
-  roomCode = null;
-  connectToServer();
+  connectToServer(null);
 });
 const roomCodeTextbox = document.getElementById("roomCodeTextbox") as HTMLInputElement;
 roomCodeTextbox.addEventListener("keydown", function(event) {
@@ -140,12 +45,11 @@ roomCodeTextbox.addEventListener("keydown", function(event) {
 const joinRoomButton = document.getElementById("joinRoomButton") as HTMLInputElement;
 joinRoomButton.addEventListener("click", submitRoomCode);
 function submitRoomCode() {
-  roomCode = roomCodeTextbox.value;
-  connectToServer();
+  connectToServer(roomCodeTextbox.value);
 }
 
 const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
-function setScreenMode(newMode: ScreenMode) {
+export function setScreenMode(newMode: ScreenMode) {
   screenMode = newMode;
   let loadingMessage = null;
   let activeDivId = (function() {
@@ -177,8 +81,6 @@ function setScreenMode(newMode: ScreenMode) {
 const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
 const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
 
-let usersById: {[index: UserId]: UserInfo} = {};
-
 const LOADING = "<loading>";
 interface Size {width: number, height: number}
 let imageUrlToSize: {[index: string]: Size | typeof LOADING} = {};
@@ -196,7 +98,7 @@ let hiderContainers: ObjectState[] = [];
 let changeHistory: MakeAMoveArgs[] = [];
 let futureChanges: MakeAMoveArgs[] = [];
 
-function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
+export function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
   database = _database;
   databaseById = {};
   database.forEach(function(closetObject) {
@@ -225,7 +127,7 @@ function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[
     makeAMove(move, false);
   });
 
-  roomCodeSpan.textContent = roomCode;
+  roomCodeSpan.textContent = getRoomCode();
 
   checkForDoneLoading();
 }
@@ -337,14 +239,13 @@ function deleteDiv(div: HTMLDivElement) {
   tableDiv.removeChild(div);
 }
 
-function deleteTableAndEverything() {
+export function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
   database = null;
   databaseById = {};
   gameDefinition = null;
   objectsById = {};
-  usersById = {};
   selectedObjectIdToNewProps = {};
   clearNumberBuffer();
   // leave the image cache alone
@@ -365,7 +266,7 @@ function fixFloatingThingZ() {
   z++;
   hiderContainers.forEach(function(object) {
     let objectDiv = getObjectDiv(object.id);
-    if (object.visionWhitelist.indexOf(myUser!.role) === -1) {
+    if (object.visionWhitelist.indexOf(getMyUserRole()) === -1) {
       // blocked
       objectDiv.style.zIndex = String(z++);
     } else {
@@ -654,7 +555,7 @@ function renderAndMaybeCommitSelection(selection: {[index: ObjectId]: ObjectTemp
 }
 function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
   let move: any[] = []; // TODO
-  move.push(myUser!.id);
+  move.push(getMyUserId());
   for (let id in selection) {
     let object = objectsById[id];
     let newProps = selection[id];
@@ -875,7 +776,7 @@ function deleteSelection() {
     deleteObject(object.id);
   });
   if (move.length > 0) {
-    move.unshift(myUser!.id);
+    move.unshift(getMyUserId());
     sendMessage({cmd:"makeAMove", args:move});
     pushChangeToHistory(move);
   }
@@ -1159,7 +1060,7 @@ function undoOrRedo(thePast: MakeAMoveArgs[], theFuture: MakeAMoveArgs[]) {
   theFuture.push(newMove);
 }
 function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
-  let newMove: MakeAMoveArgs = [myUser!.id];
+  let newMove: MakeAMoveArgs = [getMyUserId()];
   let i = 0;
   move[i++]; // ignore userId
   while (i < move.length) {
@@ -1233,20 +1134,21 @@ function eventToMouseX(event: MouseEvent, div: HTMLDivElement) { return event.cl
 function eventToMouseY(event: MouseEvent, div: HTMLDivElement) { return event.clientY - div.getBoundingClientRect().top; }
 
 const userListUl = document.getElementById("userListUl") as HTMLUListElement;
-function renderUserList() {
+export function renderUserList(usersById: {[index: UserId]: UserInfo}, myUser: UserInfo) {
   let userIds = Object.keys(usersById);
   userIds.sort();
   userListUl.innerHTML = userIds.map(function(userId) {
     return (
-      '<li'+(userId === myUser!.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
+      '<li'+(userId === myUser.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
         sanitizeHtml(usersById[userId].userName) +
-      '</li>');
+      '</li>'
+    );
   }).join("");
 
   getObjects().forEach(function(object) {
     if (object.labelPlayerName === "") return;
     let userName: string | null = null;
-    if (object.labelPlayerName === myUser!.role) {
+    if (object.labelPlayerName === myUser.role) {
       userName = "You";
     } else {
       for (let i = 0; i < userIds.length; i++) {
@@ -1284,11 +1186,11 @@ function showEditUserDialog() {
   modalMaskDiv.style.display = "block";
   editUserDiv.style.display = "block";
 
-  yourNameTextbox.value = myUser!.userName;
+  yourNameTextbox.value = getMyUserDisplayName();
   yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition!.roles.map(function(role) {
     return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
   }).join("");
-  yourRoleDropdown.value = myUser!.role;
+  yourRoleDropdown.value = getMyUserRole();
 
   dialogIsOpen = true;
   yourNameTextbox.focus();
@@ -1317,28 +1219,12 @@ yourNameTextbox.addEventListener("keydown", function(event) {
 const submitYourNameButton = document.getElementById("submitYourNameButton") as HTMLInputElement;
 submitYourNameButton.addEventListener("click", submitYourName);
 function submitYourName() {
-  let newName = yourNameTextbox.value;
-  if (newName && newName !== myUser!.userName) {
-    sendMessage({
-      cmd: "changeMyName",
-      args: newName,
-    });
-    // anticipate
-    myUser!.userName = newName;
-    renderUserList();
-  }
+  setMyUserDisplayName(yourNameTextbox.value);
 }
 const yourRoleDropdown = document.getElementById("yourRoleDropdown") as HTMLSelectElement;
 yourRoleDropdown.addEventListener("change", function() {
   setTimeout(function() {
-    let role = yourRoleDropdown.value;
-    sendMessage({
-      cmd: "changeMyRole",
-      args: role,
-    });
-    // anticipate
-    myUser!.role = role;
-    renderUserList();
+    setMyUserRole(yourRoleDropdown.value);
     // hide/show objects
     getObjects().forEach(object => render(object, false));
     fixFloatingThingZ();
@@ -1374,7 +1260,7 @@ function render(object: ObjectState, isAnimated: boolean) {
       let hiderContainer = hiderContainers[i];
       if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
-        if (hiderContainer.visionWhitelist.indexOf(myUser!.role) === -1) {
+        if (hiderContainer.visionWhitelist.indexOf(getMyUserRole()) === -1) {
           // blocked
           let forbiddenFaces = hiderContainer.hideFaces;
           let betterFaceIndex = -1;
@@ -1661,147 +1547,12 @@ function getObjects(): ObjectState[] {
 function compareZ(a: {z: number}, b: {z: number}) {
   return operatorCompare(a.z, b.z);
 }
-function operatorCompare(a: number, b: number) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
-function makeWebSocket(): WebSocket {
-  let host = location.host;
-  let pathname = location.pathname;
-  let isHttps = location.protocol === "https:";
-  let match = host.match(/^(.+):(\d+)$/);
-  let defaultPort = isHttps ? 443 : 80;
-  let port = match ? parseInt(match[2], 10) : defaultPort;
-  let hostName = match ? match[1] : host;
-  let wsProto = isHttps ? "wss:" : "ws:";
-  let wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
-  return new WebSocket(wsUrl);
-}
-
-let socket: WebSocket | null = null;
-let isConnected = false;
-function connectToServer() {
-  setScreenMode(ScreenMode.WAITING_FOR_SERVER_CONNECT);
-
-  socket = makeWebSocket();
-  socket.addEventListener('open', onOpen, false);
-  socket.addEventListener('message', onMessage, false);
-  socket.addEventListener('error', timeoutThenCreateNew, false);
-  socket.addEventListener('close', timeoutThenCreateNew, false);
-
-  function onOpen() {
-    isConnected = true;
-    console.log("connected");
-    let roomCodeToSend = roomCode;
-    if (roomCode != null) {
-      roomCodeToSend = roomCode;
-      setScreenMode(ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION);
-    } else {
-      roomCodeToSend = "new";
-      setScreenMode(ScreenMode.WAITING_FOR_CREATE_ROOM);
-    }
-    sendMessage({
-      cmd: "joinRoom",
-      args: {
-        roomCode: roomCodeToSend,
-      },
-    });
-  }
-  function onMessage(event: MessageEvent) {
-    let msg = event.data;
-    if (msg === "keepAlive") return;
-    console.log(msg);
-    let message = JSON.parse(msg) as { cmd: string, args?: any };
-    if (screenMode === ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
-      // nice try
-      disconnect();
-      setScreenMode(ScreenMode.LOGIN);
-      // TODO: show message that says we tried
-      return;
-    }
-    switch (screenMode) {
-      case ScreenMode.WAITING_FOR_CREATE_ROOM:
-      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
-        if (message.cmd === "joinRoom") {
-          setScreenMode(ScreenMode.PLAY);
-          let args = message.args as JoinRoomArgs;
-          roomCode = args.roomCode;
-          myUser = {
-            id: args.userId,
-            userName: args.userName,
-            role: args.role,
-          };
-          usersById[myUser.id] = myUser;
-          args.users.forEach(function(otherUser) {
-            usersById[otherUser.id] = otherUser;
-          });
-          initGame(args.database, args.game, args.history);
-          renderUserList();
-        } else programmerError();
-        break;
-      case ScreenMode.PLAY:
-        if (message.cmd === "makeAMove") {
-          makeAMove(message.args, true);
-        } else if (message.cmd === "userJoined") {
-          let args = message.args as UserJoinedArgs;
-          usersById[args.id] = {
-            id: args.id,
-            userName: args.userName,
-            role: args.role,
-          };
-          renderUserList();
-        } else if (message.cmd === "userLeft") {
-          let args = message.args as UserLeftArgs;
-          delete usersById[args.id];
-          renderUserList();
-        } else if (message.cmd === "changeMyName") {
-          let args = message.args as ChangeMyNameArgs;
-          usersById[args.id].userName = args.userName;
-          renderUserList();
-        } else if (message.cmd === "changeMyRole") {
-          let args = message.args as ChangeMyRoleArgs;
-          usersById[args.id].role = args.role;
-          renderUserList();
-        }
-        break;
-      default: programmerError();
-    }
-  }
-  function timeoutThenCreateNew() {
-    removeListeners();
-    if (isConnected) {
-      isConnected = false;
-      console.log("disconnected");
-      deleteTableAndEverything();
-      setScreenMode(ScreenMode.DISCONNECTED);
-    }
-    setTimeout(connectToServer, 1000);
-  }
-  function disconnect() {
-    if (socket == null) programmerError();
-    console.log("disconnect");
-    removeListeners();
-    socket.close();
-    isConnected = false;
-  }
-  function removeListeners() {
-    if (socket == null) programmerError();
-    socket.removeEventListener('open', onOpen, false);
-    socket.removeEventListener('message', onMessage, false);
-    socket.removeEventListener('error', timeoutThenCreateNew, false);
-    socket.removeEventListener('close', timeoutThenCreateNew, false);
-  }
-}
-
-function sendMessage(message: object) {
-  if (socket == null) programmerError();
-  socket.send(JSON.stringify(message));
-}
-function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
+export function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
   let objectsToRender: ObjectState[] = [];
   let i = 0;
   let userId = move[i++];
-  if (userId === myUser!.id) return;
+  if (userId === getMyUserId()) return;
   while (i < move.length) {
     let actionCode = move[i++];
     switch (actionCode) {
