@@ -42,8 +42,10 @@ interface DbEntry {
   snapZones?: SnapZone[]
   // closet properties
   closetName?: string,
+  thumbnail?: ImagePath,
   thumbnailWidth?: number,
   thumbnailHeight?: number,
+  items?: DbEntryId[],
   // screen
   hideFaces?: number[],
   visionWhitelist?: RoleId[],
@@ -51,6 +53,10 @@ interface DbEntry {
   backgroundColor?: ColorWithParameterizedAlpha,
 }
 interface SnapZone {
+  x?: number,
+  y?: number,
+  width?: number,
+  height?: number,
   cellWidth?: number,
   cellHeight?: number,
 }
@@ -91,7 +97,7 @@ type RoleId = string;
 type ColorWithParameterizedAlpha = string; // e.g. "rgba(255,0,0,$alpha)"
 type ObjectId = string;
 
-const AssertionFailure = new Error();
+function programmerError(msg?: string): never { throw new Error(msg); }
 
 let roomCode: string | null = null;
 let myUser: UserInfo | null = null;
@@ -156,7 +162,7 @@ function setScreenMode(newMode: ScreenMode) {
       case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
         loadingMessage = "Checking room code...";
         return "loadingDiv";
-      default: throw AssertionFailure;
+      default: programmerError();
     }
   })();
   ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
@@ -172,7 +178,8 @@ const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
 let usersById: {[index: UserId]: UserInfo} = {};
 
 const LOADING = "<loading>";
-let imageUrlToSize: {[index: string]: {width: number, height: number} | typeof LOADING} = {};
+interface Size {width: number, height: number}
+let imageUrlToSize: {[index: string]: Size | typeof LOADING} = {};
 
 let gameDefinition: RoomState | null = null;
 let database: DbEntry[] | null = null;
@@ -203,7 +210,7 @@ function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[
   for (let i = 0; i < gameDefinition.objects.length; i++) {
     let rawDefinition = gameDefinition.objects[i];
     let id = rawDefinition.id;
-    if (id == null) throw AssertionFailure;
+    if (id == null) programmerError();
 
     let object = makeObject(id, rawDefinition.prototype, rawDefinition.x, rawDefinition.y, i, 0);
     object.locked = !!rawDefinition.locked;
@@ -220,19 +227,19 @@ function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[
 
   checkForDoneLoading();
 }
-function parseFacePath(path: ImagePath) {
+function parseFacePath(path: ImagePath): {url:string, x?:number, y?:number, width?:number, height?:number} {
   let splitIndex = path.indexOf("#");
   if (splitIndex === -1) {
     return {url:path};
   }
   let url = path.substr(0, splitIndex);
   let cropInfo = path.substr(splitIndex + 1).split(",");
-  if (cropInfo.length !== 4) throw new Error("malformed url: " + path);
+  if (cropInfo.length !== 4) programmerError("malformed url: " + path);
   let x = parseInt(cropInfo[0]);
   let y = parseInt(cropInfo[1]);
   let width = parseInt(cropInfo[2]);
   let height = parseInt(cropInfo[3]);
-  if (isNaN(x - y - width - height)) throw new Error("malformed url: " + path);
+  if (isNaN(x - y - width - height)) programmerError("malformed url: " + path);
   return {url, x, y, width, height};
 }
 function preloadImagePath(path: ImagePath) {
@@ -264,7 +271,7 @@ function checkForDoneLoading() {
 }
 function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, z: number, faceIndex: number): ObjectState {
   let objectDefinition = databaseById[prototypeId];
-  if (objectDefinition == null) throw new Error("prototypeId not found: " + prototypeId);
+  if (objectDefinition == null) programmerError("prototypeId not found: " + prototypeId);
   return {
     id: id,
     prototype: prototypeId,
@@ -274,18 +281,15 @@ function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, 
     z: z,
     faceIndex: faceIndex,
     locked: false,
-    width:  objectDefinition.width  || error(),
-    height: objectDefinition.height || error(),
-    faces: objectDefinition.faces || [],
-    snapZones: objectDefinition.snapZones || [],
-    visionWhitelist: objectDefinition.visionWhitelist || [],
-    hideFaces: objectDefinition.hideFaces || [],
-    backgroundColor: objectDefinition.backgroundColor || "",
-    labelPlayerName: objectDefinition.labelPlayerName || "",
+    width:  objectDefinition.width  || programmerError(),
+    height: objectDefinition.height || programmerError(),
+    faces: objectDefinition.faces ?? [],
+    snapZones: objectDefinition.snapZones ?? [],
+    visionWhitelist: objectDefinition.visionWhitelist ?? [],
+    hideFaces: objectDefinition.hideFaces ?? [],
+    backgroundColor: objectDefinition.backgroundColor ?? "",
+    labelPlayerName: objectDefinition.labelPlayerName ?? "",
   };
-  function error(): never {
-    throw new Error();
-  }
 }
 function registerObject(object: ObjectState) {
   objectsById[object.id] = object;
@@ -351,7 +355,7 @@ function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectT
     if (newProps == null) newProps = object;
     if (maxZ == null || newProps.z > maxZ) maxZ = newProps.z;
   });
-  return maxZ || 0;
+  return maxZ ?? 0;
 }
 function fixFloatingThingZ() {
   renderExaminingObjects();
@@ -399,7 +403,7 @@ enum ExamineMode {
   MULTI,
 }
 let examiningMode = ExamineMode.NONE;
-let examiningObjectsById: {[index: ObjectId]: ObjectState} = {};
+let examiningObjectsById: {[index: ObjectId]: ObjectTempProps} = {};
 
 let hoverObject: ObjectState | null = null;
 let hoverDiv: HTMLDivElement | null = null;
@@ -880,14 +884,13 @@ function deleteSelection() {
   fixFloatingThingZ();
 }
 function shuffleSelection() {
-  let selection: {[index: ObjectId]: ObjectTempProps} | null = null;
+  let selection: {[index: ObjectId]: ObjectTempProps} = {};
   if (Object.keys(selectedObjectIdToNewProps).length > 0) {
     // real selection
     selection = selectedObjectIdToNewProps;
   } else if (hoverObject != null) {
     // select all objects we're hovering over in this stack
     let stackId = getStackId(hoverObject, hoverObject);
-    selection = {};
     getObjects().forEach(function(object) {
       if (stackId !== getStackId(object, object)) return;
       selection[object.id] = newPropsForObject(object);
@@ -969,7 +972,7 @@ function examineMulti() {
   unexamine();
   examiningMode = ExamineMode.MULTI;
 
-  let selection: {[index: ObjectId]: ObjectTempProps} | null = null;
+  let selection: {[index: ObjectId]: ObjectTempProps} = {};
   if (Object.keys(selectedObjectIdToNewProps).length > 0) {
     // real selection
     selection = selectedObjectIdToNewProps;
@@ -979,7 +982,6 @@ function examineMulti() {
     let hoverY = hoverObject.y;
     let hoverWidth  = hoverObject.width;
     let hoverHeight = hoverObject.height;
-    selection = {};
     getObjects().forEach(function(object) {
       if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
       if (object.x >= hoverX   + hoverWidth)    return;
@@ -1068,15 +1070,15 @@ closetShowHideButton.addEventListener("click", function(event) {
   renderCloset();
 });
 function renderCloset() {
-  closetUl.innerHTML = database.filter(function(closetObject) {
+  closetUl.innerHTML = database!.filter(function(closetObject) {
     // TODO: show groups with items
     return closetObject.closetName != null;
   }).map(function(closetObject) {
     let id        = closetObject.id;
     let name      = closetObject.closetName!;
-    let thumbnail = closetObject.thumbnail       || closetObject.faces[0];
-    let width     = closetObject.thumbnailWidth  || 25;
-    let height    = closetObject.thumbnailHeight || 25;
+    let thumbnail = closetObject.thumbnail       ?? (closetObject.faces ?? programmerError())[0];
+    let width     = closetObject.thumbnailWidth  ?? 25;
+    let height    = closetObject.thumbnailHeight ?? 25;
     // TODO: sanitize?
     return '<li data-id="'+id+'"><img src="'+thumbnail+'" width='+width+' height='+height+'>'+name+'</li>';
   }).join("");
@@ -1160,14 +1162,15 @@ function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
   while (i < move.length) {
     let actionCode = move[i++];
     switch (actionCode) {
-      case "c": // create -> delete
+      case "c": { // create -> delete
         let object = consumeObjectProps(move, i);
         i += objectPropCount;
         newMove.push("d"); // delete
         pushObjectProps(newMove, object);
         deleteObject(object.id);
         break;
-      case "d": // delete -> create
+      }
+      case "d": { // delete -> create
         let object = consumeObjectProps(move, i);
         i += objectPropCount;
         newMove.push("c"); // create
@@ -1175,7 +1178,8 @@ function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
         registerObject(object);
         render(object, true);
         break;
-      case "m": // move -> move
+      }
+      case "m": { // move -> move
         let object = objectsById[move[i++]];
         let fromX         =      move[i++];
         let fromY         =      move[i++];
@@ -1208,7 +1212,8 @@ function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
           fromFaceIndex);
         render(object, true);
         break;
-      default: throw AssertionFailure;
+      }
+      default: programmerError();
     }
   }
   renderOrder();
@@ -1249,9 +1254,9 @@ function renderUserList() {
       }
     }
     let roleName: string | null = null;
-    for (let i = 0; i < gameDefinition.roles.length; i++) {
-      if (gameDefinition.roles[i].id === object.labelPlayerName) {
-        roleName = gameDefinition.roles[i].name;
+    for (let i = 0; i < gameDefinition!.roles.length; i++) {
+      if (gameDefinition!.roles[i].id === object.labelPlayerName) {
+        roleName = gameDefinition!.roles[i].name;
         break;
       }
     }
@@ -1277,7 +1282,7 @@ function showEditUserDialog() {
   editUserDiv.style.display = "block";
 
   yourNameTextbox.value = myUser!.userName;
-  yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition.roles.map(function(role) {
+  yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition!.roles.map(function(role) {
     return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
   }).join("");
   yourRoleDropdown.value = myUser!.role;
@@ -1289,7 +1294,7 @@ function showEditUserDialog() {
 function closeDialog() {
   modalMaskDiv.style.display = "none";
   editUserDiv.style.display = "none";
-  if (document.activeElement != null) {
+  if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
   dialogIsOpen = false;
@@ -1393,7 +1398,7 @@ function render(object: ObjectState, isAnimated: boolean) {
   objectDiv.style.top  = y + "px";
   objectDiv.style.width  = object.width  + "px";
   objectDiv.style.height = object.height + "px";
-  objectDiv.style.zIndex = z;
+  objectDiv.style.zIndex = String(z);
   if (object.faces.length > 0) {
     let facePath = object.faces[faceIndex];
     let {url} = parseFacePath(facePath);
@@ -1410,12 +1415,12 @@ function render(object: ObjectState, isAnimated: boolean) {
     objectDiv.style.left = (x - 3) + "px";
     objectDiv.style.top  = (y - 3) + "px";
   } else {
-    throw new Error("don't know how to render object");
+    programmerError("don't know how to render object");
   }
   objectDiv.style.display = "block";
 
   if (object.backgroundColor !== "") {
-    let backgroundDiv = getBackgroundDiv(object.id);
+    let backgroundDiv = getBackgroundDiv(object.id) ?? programmerError();
     if (isAnimated) {
       backgroundDiv.classList.add("animatedMovement");
     } else {
@@ -1425,7 +1430,7 @@ function render(object: ObjectState, isAnimated: boolean) {
     backgroundDiv.style.top = y + "px";
     backgroundDiv.style.width  = object.width  + "px";
     backgroundDiv.style.height = object.height + "px";
-    backgroundDiv.style.zIndex = 0;
+    backgroundDiv.style.zIndex = String(0);
     backgroundDiv.style.display = "block";
     backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/\$alpha/, "1.0");
   }
@@ -1479,7 +1484,7 @@ function renderExaminingObjects() {
     objectDiv.style.left = (renderX + window.scrollX) + "px";
     objectDiv.style.top  = (renderY + window.scrollY) + "px";
     renderSize(objectDiv, renderWidth, renderHeight);
-    objectDiv.style.zIndex = maxZ + i + 3;
+    objectDiv.style.zIndex = String(maxZ + i + 3);
     let stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.style.display = "none";
   }
@@ -1489,9 +1494,10 @@ function renderSize(objectDiv: HTMLDivElement, renderWidth: number, renderHeight
   objectDiv.style.height = renderHeight + "px";
   let {url, x, y, width, height} = parseFacePath(objectDiv.dataset.facePath as ImagePath);
   if (x != null) {
+    if (!(y != null && width != null && height != null)) programmerError();
     let scaleX = renderWidth  / width;
     let scaleY = renderHeight / height;
-    let backgroundSize = imageUrlToSize[url];
+    let backgroundSize = imageUrlToSize[url] as Size;
     //objectDiv.style.backgroundRepeat = "no-repeat";
     objectDiv.style.backgroundPosition = `-${x * scaleX}px -${y * scaleY}px`;
     objectDiv.style.backgroundSize = `${backgroundSize.width * scaleX}px ${backgroundSize.height * scaleY}px`;
@@ -1597,15 +1603,15 @@ function snapToSnapZones(object: ObjectState, newProps: ObjectTempProps): boolea
   objectsWithSnapZones.sort(compareZ);
   for (let i = objectsWithSnapZones.length - 1; i >= 0; i--) {
     let containerObject = objectsWithSnapZones[i];
-    let containerProps = selectedObjectIdToNewProps[containerObject.id] || containerObject;
+    let containerProps = selectedObjectIdToNewProps[containerObject.id] ?? containerObject;
     for (let j = 0; j < containerObject.snapZones.length; j++) {
       let snapZoneDefinition = containerObject.snapZones[j];
-      let snapZoneX      = snapZoneDefinition.x          != null ? snapZoneDefinition.x          : 0;
-      let snapZoneY      = snapZoneDefinition.y          != null ? snapZoneDefinition.y          : 0;
-      let snapZoneWidth  = snapZoneDefinition.width      != null ? snapZoneDefinition.width      : containerObject.width;
-      let snapZoneHeight = snapZoneDefinition.height     != null ? snapZoneDefinition.height     : containerObject.height;
-      let cellWidth      = snapZoneDefinition.cellWidth  != null ? snapZoneDefinition.cellWidth  : snapZoneWidth;
-      let cellHeight     = snapZoneDefinition.cellHeight != null ? snapZoneDefinition.cellHeight : snapZoneHeight;
+      let snapZoneX      = snapZoneDefinition.x          ?? 0;
+      let snapZoneY      = snapZoneDefinition.y          ?? 0;
+      let snapZoneWidth  = snapZoneDefinition.width      ?? containerObject.width;
+      let snapZoneHeight = snapZoneDefinition.height     ?? containerObject.height;
+      let cellWidth      = snapZoneDefinition.cellWidth  ?? snapZoneWidth;
+      let cellHeight     = snapZoneDefinition.cellHeight ?? snapZoneHeight;
       if (cellWidth  < object.width)  continue; // doesn't fit in the zone
       if (cellHeight < object.height) continue; // doesn't fit in the zone
       if (newProps.x >= containerProps.x + snapZoneX + snapZoneWidth)  continue; // way off right
@@ -1728,7 +1734,7 @@ function connectToServer() {
           });
           initGame(args.database, args.game, args.history);
           renderUserList();
-        } else throw AssertionFailure;
+        } else programmerError();
         break;
       case ScreenMode.PLAY:
         if (message.cmd === "makeAMove") {
@@ -1755,7 +1761,7 @@ function connectToServer() {
           renderUserList();
         }
         break;
-      default: throw AssertionFailure;
+      default: programmerError();
     }
   }
   function timeoutThenCreateNew() {
@@ -1769,12 +1775,14 @@ function connectToServer() {
     setTimeout(connectToServer, 1000);
   }
   function disconnect() {
+    if (socket == null) programmerError();
     console.log("disconnect");
     removeListeners();
     socket.close();
     isConnected = false;
   }
   function removeListeners() {
+    if (socket == null) programmerError();
     socket.removeEventListener('open', onOpen, false);
     socket.removeEventListener('message', onMessage, false);
     socket.removeEventListener('error', timeoutThenCreateNew, false);
@@ -1783,6 +1791,7 @@ function connectToServer() {
 }
 
 function sendMessage(message: object) {
+  if (socket == null) programmerError();
   socket.send(JSON.stringify(message));
 }
 function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
@@ -1793,27 +1802,29 @@ function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
   while (i < move.length) {
     let actionCode = move[i++];
     switch (actionCode) {
-      case "c": // create
+      case "c": { // create
         let object = consumeObjectProps(move, i);
         i += objectPropCount;
         registerObject(object);
         if (shouldRender) objectsToRender.push(object);
         break;
-      case "d":
+      }
+      case "d": {
         let object = consumeObjectProps(move, i);
         i += objectPropCount;
         deleteObject(object.id);
         break;
-      case "m": // move
+      }
+      case "m": { // move
         let object = objectsById[move[i++]];
-        let fromX         = move[i++];
-        let fromY         = move[i++];
-        let fromZ         = move[i++];
-        let fromFaceIndex = move[i++];
-        let   toX         = move[i++];
-        let   toY         = move[i++];
-        let   toZ         = move[i++];
-        let   toFaceIndex = move[i++];
+        move[i++]; // fromX
+        move[i++]; // fromY
+        move[i++]; // fromZ
+        move[i++]; // fromFaceIndex
+        let toX         = move[i++];
+        let toY         = move[i++];
+        let toZ         = move[i++];
+        let toFaceIndex = move[i++];
         object.x = toX;
         object.y = toY;
         object.z = toZ;
@@ -1827,7 +1838,8 @@ function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
         }
         if (shouldRender) objectsToRender.push(object);
         break;
-      default: throw AssertionFailure;
+      }
+      default: programmerError();
     }
   }
 
@@ -1849,13 +1861,13 @@ function generateRandomId(): ObjectId {
   }
   return result;
 }
-function getObjectDiv(id) {
+function getObjectDiv(id: ObjectId) {
   return document.getElementById("object-" + id) as HTMLDivElement;
 }
 function getStackHeightDiv(id: ObjectId) {
   return document.getElementById("stackHeight-" + id) as HTMLDivElement;
 }
-function getBackgroundDiv(id) {
+function getBackgroundDiv(id: ObjectId) {
   return document.getElementById("background-" + id) as HTMLDivElement | null;
 }
 function setDivVisible(div: HTMLDivElement, visible: boolean) {
