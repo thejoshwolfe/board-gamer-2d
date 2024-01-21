@@ -14,7 +14,7 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
 
-    "module": "none",
+    "module": "ES2022",
 
     "removeComments": true,
     "sourceMap": true,

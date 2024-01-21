@@ -1,3 +1,5 @@
+import {clamp, euclideanMod} from "./math.js";
+
 interface UserJoinedArgs {
   id: UserId,
   userName: string,
@@ -344,7 +346,7 @@ function deleteTableAndEverything() {
   objectsById = {};
   usersById = {};
   selectedObjectIdToNewProps = {};
-  consumeNumberModifier();
+  clearNumberBuffer();
   // leave the image cache alone
 }
 function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectTempProps}): number {
@@ -648,7 +650,7 @@ function renderAndMaybeCommitSelection(selection: {[index: ObjectId]: ObjectTemp
   resizeTableToFitEverything();
 
   // it's too late to use this
-  consumeNumberModifier();
+  clearNumberBuffer();
 }
 function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
   let move: any[] = []; // TODO
@@ -748,7 +750,7 @@ document.addEventListener("keydown", function(event: KeyboardEvent) {
       if (modifierMask === 0 && accordionMouseStartX == null) { groupSelection(); startAccordion(); isGKeyDown = true; break; }
       return;
     case 27: // Escape
-      if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
+      if (modifierMask === 0 && numberTypingBuffer.length > 0) { clearNumberBuffer(); break; }
       if (modifierMask === 0 && draggingMode === DragMode.MOVE_SELECTION) { cancelMove(); break; }
       if (modifierMask === 0 && draggingMode === DragMode.NONE)           { setSelectedObjects([]); break; }
       return;
@@ -1023,6 +1025,7 @@ function consumeNumberModifier(): number | null {
   return result;
 }
 function clearNumberBuffer() {
+  if (numberTypingBuffer.length === 0) return;
   numberTypingBuffer = "";
   renderNumberBuffer();
 }
@@ -1149,7 +1152,7 @@ function makeTemporaryObject(prototypeId: DbEntryId, x: number, y: number, z: nu
 function undo() { undoOrRedo(changeHistory, futureChanges); }
 function redo() { undoOrRedo(futureChanges, changeHistory); }
 function undoOrRedo(thePast: MakeAMoveArgs[], theFuture: MakeAMoveArgs[]) {
-  consumeNumberModifier(); // ignore.
+  clearNumberBuffer();
   if (thePast.length === 0) return;
   let newMove = reverseChange(thePast.pop());
   sendMessage({cmd:"makeAMove", args:newMove});
@@ -1876,14 +1879,6 @@ function setDivVisible(div: HTMLDivElement, visible: boolean) {
 
 function sanitizeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-}
-function euclideanMod(numerator: number, denominator: number): number {
-  return (numerator % denominator + denominator) % denominator;
-}
-function clamp(n: number, min: number, max: number): number {
-  if (n < min) return min;
-  if (n > max) return max;
-  return n;
 }
 
 // Done defining everything.
