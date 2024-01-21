@@ -6,6 +6,7 @@
 
 ```
 npm install
+./build.sh
 node lib/server.js
 ```
 
