@@ -1,7 +1,5 @@
 import {programmerError} from "./math.js";
 import {
-  ScreenMode, getScreenMode, setScreenMode,
-  renderUserList,
   initGame, deleteTableAndEverything,
   makeAMove,
 } from "./client.js";
@@ -9,6 +7,10 @@ import {
   UserInfo, UserId,
   JoinRoomArgs, UserJoinedArgs, UserLeftArgs, ChangeMyNameArgs, ChangeMyRoleArgs, RoleId,
 } from "./protocol.js";
+import {
+  ScreenMode, getScreenMode, setScreenMode,
+  renderUserList,
+ } from "./ui_layout.js";
 
 let socket: WebSocket | null = null;
 let isConnected = false;
@@ -45,7 +47,7 @@ export function setMyUserDisplayName(newName: string) {
   renderUserList(usersById, myUser!);
 }
 export function setMyUserRole(role: RoleId) {
-  if (role === "" || role === myUser!.role) return;
+  if (role === myUser!.role) return;
   sendMessage({
     cmd: "changeMyRole",
     args: role,

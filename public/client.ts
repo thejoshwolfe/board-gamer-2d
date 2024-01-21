@@ -1,82 +1,18 @@
 import {
-  connectToServer, sendMessage, getRoomCode,
-  getMyUserId, getMyUserRole, getMyUserDisplayName, setMyUserDisplayName, setMyUserRole,
+  sendMessage, getRoomCode,
+  getMyUserId, getMyUserRole,
 } from "./connection.js";
-import {clamp, euclideanMod, operatorCompare, programmerError} from "./math.js";
+import {
+  clamp, euclideanMod, operatorCompare, programmerError,
+} from "./math.js";
 import {
   UserInfo, UserId, MakeAMoveArgs, DbEntry, DbEntryId, RoomState, ObjectState, ImagePath, ObjectId,
 } from "./protocol.js";
-
-export enum ScreenMode {
-  DISCONNECTED,
-  LOGIN,
-  WAITING_FOR_SERVER_CONNECT,
-  WAITING_FOR_CREATE_ROOM,
-  WAITING_FOR_ROOM_CODE_CONFIRMATION,
-  PLAY,
-}
-let screenMode = ScreenMode.LOGIN;
-export function getScreenMode() {
-  return screenMode;
-}
-
-const createRoomButton = document.getElementById("createRoomButton") as HTMLInputElement;
-createRoomButton.addEventListener("click", function() {
-  connectToServer(null);
-});
-const roomCodeTextbox = document.getElementById("roomCodeTextbox") as HTMLInputElement;
-roomCodeTextbox.addEventListener("keydown", function(event) {
-  event.stopPropagation();
-  if (event.keyCode === 13) {
-    setTimeout(submitRoomCode, 0);
-  } else {
-    setTimeout(function() {
-      let value = roomCodeTextbox.value;
-      let canonicalValue = value.toUpperCase();
-      if (value === canonicalValue) return;
-      let selectionStart = roomCodeTextbox.selectionStart;
-      let selectionEnd = roomCodeTextbox.selectionEnd;
-      roomCodeTextbox.value = canonicalValue;
-      roomCodeTextbox.selectionStart = selectionStart;
-      roomCodeTextbox.selectionEnd = selectionEnd;
-    }, 0);
-  }
-});
-const joinRoomButton = document.getElementById("joinRoomButton") as HTMLInputElement;
-joinRoomButton.addEventListener("click", submitRoomCode);
-function submitRoomCode() {
-  connectToServer(roomCodeTextbox.value);
-}
-
-const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
-export function setScreenMode(newMode: ScreenMode) {
-  screenMode = newMode;
-  let loadingMessage = null;
-  let activeDivId = (function() {
-    switch (screenMode) {
-      case ScreenMode.PLAY: return "roomDiv";
-      case ScreenMode.LOGIN: return "loginDiv";
-      case ScreenMode.DISCONNECTED:
-        loadingMessage = "Disconnected...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_SERVER_CONNECT:
-        loadingMessage = "Trying to reach the server...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_CREATE_ROOM:
-        loadingMessage = "Waiting for a new room...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
-        loadingMessage = "Checking room code...";
-        return "loadingDiv";
-      default: programmerError();
-    }
-  })();
-  ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
-    setDivVisible(document.getElementById(divId) as HTMLDivElement, divId === activeDivId);
-  });
-  if (activeDivId === "loginDiv") roomCodeTextbox.focus();
-  loadingMessageDiv.textContent = loadingMessage != null ? loadingMessage : "Please wait...";
-}
+import {
+  setScreenMode, ScreenMode,
+  canMoveLockedObjects,
+  closeDialog, isDialogOpen, setOverlayZ, toggleHelp,
+} from "./ui_layout.js";
 
 const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
 const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
@@ -98,8 +34,11 @@ let hiderContainers: ObjectState[] = [];
 let changeHistory: MakeAMoveArgs[] = [];
 let futureChanges: MakeAMoveArgs[] = [];
 
-export function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
-  database = _database;
+export function getRoles() {
+  return (gameDefinition ?? programmerError()).roles;
+}
+export function initGame(newDatabase: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
+  database = newDatabase;
   databaseById = {};
   database.forEach(function(closetObject) {
     databaseById[closetObject.id] = closetObject;
@@ -168,11 +107,15 @@ function checkForDoneLoading() {
     if (imageUrlToSize[url] === LOADING) return; // not done yet.
   }
   // all done loading
-  getObjects().forEach(object => render(object, false));
+  renderAllObjects();
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
+export function renderAllObjects() {
+  getObjects().forEach(object => render(object, false));
+}
+
 function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, z: number, faceIndex: number): ObjectState {
   let objectDefinition = databaseById[prototypeId];
   if (objectDefinition == null) programmerError("prototypeId not found: " + prototypeId);
@@ -260,7 +203,7 @@ function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectT
   });
   return maxZ ?? 0;
 }
-function fixFloatingThingZ() {
+export function fixFloatingThingZ() {
   renderExaminingObjects();
   let z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
@@ -274,11 +217,7 @@ function fixFloatingThingZ() {
       objectDiv.style.zIndex = String(object.z);
     }
   });
-  topRightDiv .style.zIndex = String(z++);
-  helpDiv     .style.zIndex = String(z++);
-  closetDiv   .style.zIndex = String(z++);
-  modalMaskDiv.style.zIndex = String(z++);
-  editUserDiv .style.zIndex = String(z++);
+  setOverlayZ(z);
 }
 
 enum DragMode {
@@ -287,6 +226,7 @@ enum DragMode {
   MOVE_SELECTION,
 }
 let draggingMode = DragMode.NONE;
+export function isDraggingAnything() { return draggingMode !== DragMode.NONE; }
 
 let rectangleSelectStartX = 0;
 let rectangleSelectStartY = 0;
@@ -322,7 +262,7 @@ function onObjectMouseDown(event: MouseEvent) {
   if (examiningMode !== ExamineMode.NONE) return;
   let objectDiv = event.currentTarget as HTMLDivElement;
   let object = objectsById[objectDiv.dataset.id as ObjectId];
-  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // click thee behind me, satan
+  if (isObjectLocked(object)) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
 
@@ -357,7 +297,7 @@ function onObjectMouseMove(event: MouseEvent) {
   if (draggingMode != DragMode.NONE) return;
   let objectDiv = event.currentTarget as HTMLDivElement;
   let object = objectsById[objectDiv.dataset.id as ObjectId];
-  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
+  if (isObjectLocked(object)) return;
   setHoverObject(object);
 }
 function onObjectMouseOut(event: MouseEvent) {
@@ -412,7 +352,7 @@ document.addEventListener("mousemove", function(event) {
       if (minY > maxY) { let tmp = maxY; maxY = minY; minY = tmp; }
       let newSelectedObjects: ObjectState[] = [];
       getObjects().forEach(function(object) {
-        if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
+        if (isObjectLocked(object)) return;
         if (object.x > maxX) return;
         if (object.y > maxY) return;
         if (object.x + object.width  < minX) return;
@@ -632,7 +572,7 @@ function getModifierMask(event: MouseEvent | KeyboardEvent) {
   );
 }
 document.addEventListener("keydown", function(event: KeyboardEvent) {
-  if (dialogIsOpen) {
+  if (isDialogOpen()) {
     if (event.keyCode === 27) closeDialog();
     return;
   }
@@ -886,7 +826,7 @@ function examineMulti() {
     let hoverWidth  = hoverObject.width;
     let hoverHeight = hoverObject.height;
     getObjects().forEach(function(object) {
-      if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
+      if (isObjectLocked(object)) return; // don't look at me
       if (object.x >= hoverX   + hoverWidth)    return;
       if (object.y >= hoverY   + hoverHeight)   return;
       if (hoverX   >= object.x + object.width)  return;
@@ -911,6 +851,9 @@ function unexamine() {
   }
   renderOrder();
 }
+function isObjectLocked(object: ObjectState): boolean {
+  return object.locked && !canMoveLockedObjects();
+}
 
 let numberTypingBuffer = "";
 function typeNumber(numberValue: number) {
@@ -931,49 +874,7 @@ function clearNumberBuffer() {
   renderNumberBuffer();
 }
 
-let isHelpShown = true;
-let isHelpMouseIn = false;
-function toggleHelp() {
-  isHelpShown = !isHelpShown;
-  renderHelp();
-}
-const topRightDiv = document.getElementById("topRightDiv") as HTMLDivElement;
-const helpDiv = document.getElementById("helpDiv") as HTMLDivElement;
-helpDiv.addEventListener("mousemove", function() {
-  if (draggingMode !== DragMode.NONE) return;
-  isHelpMouseIn = true;
-  renderHelp();
-});
-helpDiv.addEventListener("mouseout", function() {
-  isHelpMouseIn = false;
-  renderHelp();
-});
-function renderHelp() {
-  if (isHelpShown || isHelpMouseIn) {
-    helpDiv.classList.add("helpExpanded");
-  } else {
-    helpDiv.classList.remove("helpExpanded");
-  }
-}
-
-let showCloset = false;
-
-const closetDiv = document.getElementById("closetDiv") as HTMLDivElement;
-const closetShowHideButton = document.getElementById("closetShowHideButton") as HTMLParagraphElement;
-const closetUl = document.getElementById("closetUl") as HTMLUListElement;
-closetShowHideButton.addEventListener("click", function(event) {
-  event.preventDefault();
-  if (event.button !== 0) return;
-  event.stopPropagation();
-  if (showCloset) {
-    closetUl.innerHTML = "";
-    showCloset = false;
-    return;
-  }
-  showCloset = true;
-  renderCloset();
-});
-function renderCloset() {
+export function renderCloset(closetUl: HTMLUListElement) {
   closetUl.innerHTML = database!.filter(function(closetObject) {
     // TODO: show groups with items
     return closetObject.closetName != null;
@@ -1132,112 +1033,6 @@ function pushChangeToHistory(change: MakeAMoveArgs) {
 
 function eventToMouseX(event: MouseEvent, div: HTMLDivElement) { return event.clientX - div.getBoundingClientRect().left; }
 function eventToMouseY(event: MouseEvent, div: HTMLDivElement) { return event.clientY - div.getBoundingClientRect().top; }
-
-const userListUl = document.getElementById("userListUl") as HTMLUListElement;
-export function renderUserList(usersById: {[index: UserId]: UserInfo}, myUser: UserInfo) {
-  let userIds = Object.keys(usersById);
-  userIds.sort();
-  userListUl.innerHTML = userIds.map(function(userId) {
-    return (
-      '<li'+(userId === myUser.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
-        sanitizeHtml(usersById[userId].userName) +
-      '</li>'
-    );
-  }).join("");
-
-  getObjects().forEach(function(object) {
-    if (object.labelPlayerName === "") return;
-    let userName: string | null = null;
-    if (object.labelPlayerName === myUser.role) {
-      userName = "You";
-    } else {
-      for (let i = 0; i < userIds.length; i++) {
-        if (usersById[userIds[i]].role === object.labelPlayerName) {
-          userName = usersById[userIds[i]].userName;
-          break;
-        }
-      }
-    }
-    let roleName: string | null = null;
-    for (let i = 0; i < gameDefinition!.roles.length; i++) {
-      if (gameDefinition!.roles[i].id === object.labelPlayerName) {
-        roleName = gameDefinition!.roles[i].name;
-        break;
-      }
-    }
-    let labelText: string | null = null;
-    if (userName != null) {
-      labelText = userName + " ("+roleName+")";
-    } else {
-      labelText = roleName;
-    }
-    let stackHeightDiv = getStackHeightDiv(object.id);
-    stackHeightDiv.textContent = labelText;
-    stackHeightDiv.style.display = "block";
-  });
-  const myUserNameLi = document.getElementById("myUserNameLi") as HTMLLIElement;
-  myUserNameLi.addEventListener("click", showEditUserDialog);
-}
-let dialogIsOpen = false;
-const modalMaskDiv = document.getElementById("modalMaskDiv") as HTMLDivElement;
-modalMaskDiv.addEventListener("mousedown", closeDialog);
-const editUserDiv = document.getElementById("editUserDiv") as HTMLDivElement;
-function showEditUserDialog() {
-  modalMaskDiv.style.display = "block";
-  editUserDiv.style.display = "block";
-
-  yourNameTextbox.value = getMyUserDisplayName();
-  yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition!.roles.map(function(role) {
-    return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
-  }).join("");
-  yourRoleDropdown.value = getMyUserRole();
-
-  dialogIsOpen = true;
-  yourNameTextbox.focus();
-  yourNameTextbox.select();
-}
-function closeDialog() {
-  modalMaskDiv.style.display = "none";
-  editUserDiv.style.display = "none";
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-  dialogIsOpen = false;
-}
-const yourNameTextbox = document.getElementById("yourNameTextbox") as HTMLInputElement;
-yourNameTextbox.addEventListener("keydown", function(event) {
-  event.stopPropagation();
-  if (event.keyCode === 13) {
-    setTimeout(function() {
-      submitYourName();
-      closeDialog();
-    }, 0);
-  } else if (event.keyCode === 27) {
-    setTimeout(closeDialog, 0);
-  }
-});
-const submitYourNameButton = document.getElementById("submitYourNameButton") as HTMLInputElement;
-submitYourNameButton.addEventListener("click", submitYourName);
-function submitYourName() {
-  setMyUserDisplayName(yourNameTextbox.value);
-}
-const yourRoleDropdown = document.getElementById("yourRoleDropdown") as HTMLSelectElement;
-yourRoleDropdown.addEventListener("change", function() {
-  setTimeout(function() {
-    setMyUserRole(yourRoleDropdown.value);
-    // hide/show objects
-    getObjects().forEach(object => render(object, false));
-    fixFloatingThingZ();
-  }, 0);
-});
-const closeEditUserButton = document.getElementById("closeEditUserButton") as HTMLInputElement;
-closeEditUserButton.addEventListener("click", closeDialog);
-
-const moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox") as HTMLInputElement;
-moveLockedObjectsModeCheckbox.addEventListener("click", function() {
-  // Prevent keyboard focus from interfering with hotkeys.
-  moveLockedObjectsModeCheckbox.blur();
-});
 
 
 function render(object: ObjectState, isAnimated: boolean) {
@@ -1426,6 +1221,39 @@ function renderOrder() {
     });
   }
 }
+export function renderPlayerLabelObjects(usersById: {[index: UserId]: UserInfo}, userIds: UserId[], myUser: UserInfo) {
+  getObjects().forEach(function(object) {
+    if (object.labelPlayerName === "") return;
+    let userName: string | null = null;
+    if (object.labelPlayerName === myUser.role) {
+      userName = "You";
+    } else {
+      for (let i = 0; i < userIds.length; i++) {
+        if (usersById[userIds[i]].role === object.labelPlayerName) {
+          userName = usersById[userIds[i]].userName;
+          break;
+        }
+      }
+    }
+    let roleName: string | null = null;
+    for (let i = 0; i < gameDefinition!.roles.length; i++) {
+      if (gameDefinition!.roles[i].id === object.labelPlayerName) {
+        roleName = gameDefinition!.roles[i].name;
+        break;
+      }
+    }
+    let labelText: string | null = null;
+    if (userName != null) {
+      labelText = userName + " ("+roleName+")";
+    } else {
+      labelText = roleName;
+    }
+    let stackHeightDiv = getStackHeightDiv(object.id);
+    stackHeightDiv.textContent = labelText;
+    stackHeightDiv.style.display = "block";
+  });
+}
+
 type StackId = string; // rectangle x,y,w,h e.g. "12,34,45,67"
 function getStackId(newProps: ObjectTempProps | ObjectState, object: ObjectState): StackId {
   return [newProps.x, newProps.y, object.width, object.height].join(",");
@@ -1623,13 +1451,6 @@ function getStackHeightDiv(id: ObjectId) {
 }
 function getBackgroundDiv(id: ObjectId) {
   return document.getElementById("background-" + id) as HTMLDivElement | null;
-}
-function setDivVisible(div: HTMLDivElement, visible: boolean) {
-  div.style.display = visible ? "block" : "none";
-}
-
-function sanitizeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 }
 
 // Done defining everything.
