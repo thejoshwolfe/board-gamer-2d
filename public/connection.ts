@@ -146,7 +146,8 @@ export function connectToServer(newRoomCode: string | null) {
       default: programmerError();
     }
   }
-  function timeoutThenCreateNew() {
+  function timeoutThenCreateNew(arg?: any) {
+    console.log("disconnecting", arg);
     removeListeners();
     if (isConnected) {
       isConnected = false;

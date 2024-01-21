@@ -17,12 +17,7 @@
     "module": "NodeNext",
 
     "removeComments": true,
-    "sourceMap": true,
-
-    "lib": [
-      "ES2018",
-      "DOM"
-    ]
+    "sourceMap": true
   },
   "files": [
     "server.ts"
