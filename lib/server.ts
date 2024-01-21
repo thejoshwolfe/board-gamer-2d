@@ -1,8 +1,7 @@
 import http from "http";
 import express from "express";
 import createGzipStatic from "connect-static";
-import installWsSupport from "express-ws";
-import {WebSocket} from "ws";
+import {WebSocket, WebSocketServer} from "ws";
 
 import database from "./database";
 import defaultRoomState from "./defaultRoom";
@@ -13,11 +12,11 @@ function main() {
     if (err) throw err;
     app.use(middleware);
     var httpServer = http.createServer(app);
-    var webSocketServer = installWsSupport(app, httpServer).getWss();
-    webSocketServer.on("error", function(err) {
-      console.log("web socket server error:", err.stack);
-    });
-    webSocketServer.on("connection", function(socket) {
+    const wss = new WebSocketServer({server: httpServer});
+    // wss.on("error", function(err) {
+    //   console.log("web socket server error:", err.stack);
+    // });
+    wss.on("connection", function(socket) {
       handleNewSocket(socket);
     });
     httpServer.listen(25407, "127.0.0.1", function() {
