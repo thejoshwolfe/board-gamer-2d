@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "build": "npm install && npm exec tsc"
+  }
+}

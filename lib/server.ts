@@ -8,7 +8,7 @@ import defaultRoomState from "./defaultRoom";
 
 function main() {
   var app = express();
-  createGzipStatic({dir:"public"}, function(err, middleware) {
+  createGzipStatic({dir:"../public"}, function(err, middleware) {
     if (err) throw err;
     app.use(middleware);
     var httpServer = http.createServer(app);

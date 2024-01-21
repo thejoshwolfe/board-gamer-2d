@@ -25,6 +25,6 @@
     ]
   },
   "files": [
-    "public/client.ts"
+    "client.ts"
   ]
 }
