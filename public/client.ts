@@ -1,181 +1,21 @@
-interface UserJoinedArgs {
-  id: UserId,
-  userName: string,
-  role: RoleId,
-}
-interface UserLeftArgs {
-  id: UserId,
-}
-interface ChangeMyNameArgs {
-  id: UserId,
-  userName: string,
-}
-interface ChangeMyRoleArgs {
-  id: UserId,
-  role: RoleId,
-}
-
-interface JoinRoomArgs {
-  roomCode: string,
-  userId:   UserId,
-  userName: string,
-  role:     RoleId,
-  database: DbEntry[],
-  game:     RoomState,
-  history:  MakeAMoveArgs[],
-  users:    UserInfo[],
-}
-type MakeAMoveArgs = any; // TODO
-interface UserInfo {
-  id:       UserId,
-  userName: string,
-  role:     RoleId,
-}
-
-interface DbEntry {
-  id: DbEntryId,
-  // regular game object
-  width?: number,
-  height?: number,
-  faces?: ImagePath[],
-  // board
-  snapZones?: SnapZone[]
-  // closet properties
-  closetName?: string,
-  thumbnail?: ImagePath,
-  thumbnailWidth?: number,
-  thumbnailHeight?: number,
-  items?: DbEntryId[],
-  // screen
-  hideFaces?: number[],
-  visionWhitelist?: RoleId[],
-  labelPlayerName?: RoleId,
-  backgroundColor?: ColorWithParameterizedAlpha,
-}
-interface SnapZone {
-  x?: number,
-  y?: number,
-  width?: number,
-  height?: number,
-  cellWidth?: number,
-  cellHeight?: number,
-}
-
-interface RoomState {
-  roles: RoleDisplayNameBinding[],
-  objects: ObjectState[],
-}
-interface RoleDisplayNameBinding {
-  id: RoleId,
-  name: string,
-}
-interface ObjectState {
-  id: ObjectId,
-  prototype: DbEntryId,
-  width: number,
-  height: number,
-  locked: boolean,
-  temporary: boolean,
-
-  x: number,
-  y: number,
-  z: number,
-  faceIndex: number,
-
-  faces: ImagePath[],
-  snapZones: SnapZone[],
-  hideFaces: number[],
-  visionWhitelist: RoleId[],
-  labelPlayerName: RoleId | "",
-  backgroundColor: ColorWithParameterizedAlpha | "",
-}
-
-type DbEntryId = string;
-type ImagePath = string; // "path.png" or "path.png#x,y,w,h" where [xywh] are integers in base 10.
-type UserId = string;
-type RoleId = string;
-type ColorWithParameterizedAlpha = string; // e.g. "rgba(255,0,0,$alpha)"
-type ObjectId = string;
-
-function programmerError(msg?: string): never { throw new Error(msg); }
-
-let roomCode: string | null = null;
-let myUser: UserInfo | null = null;
-
-enum ScreenMode {
-  DISCONNECTED,
-  LOGIN,
-  WAITING_FOR_SERVER_CONNECT,
-  WAITING_FOR_CREATE_ROOM,
-  WAITING_FOR_ROOM_CODE_CONFIRMATION,
-  PLAY,
-}
-let screenMode = ScreenMode.LOGIN;
-
-const createRoomButton = document.getElementById("createRoomButton") as HTMLInputElement;
-createRoomButton.addEventListener("click", function() {
-  roomCode = null;
-  connectToServer();
-});
-const roomCodeTextbox = document.getElementById("roomCodeTextbox") as HTMLInputElement;
-roomCodeTextbox.addEventListener("keydown", function(event) {
-  event.stopPropagation();
-  if (event.keyCode === 13) {
-    setTimeout(submitRoomCode, 0);
-  } else {
-    setTimeout(function() {
-      let value = roomCodeTextbox.value;
-      let canonicalValue = value.toUpperCase();
-      if (value === canonicalValue) return;
-      let selectionStart = roomCodeTextbox.selectionStart;
-      let selectionEnd = roomCodeTextbox.selectionEnd;
-      roomCodeTextbox.value = canonicalValue;
-      roomCodeTextbox.selectionStart = selectionStart;
-      roomCodeTextbox.selectionEnd = selectionEnd;
-    }, 0);
-  }
-});
-const joinRoomButton = document.getElementById("joinRoomButton") as HTMLInputElement;
-joinRoomButton.addEventListener("click", submitRoomCode);
-function submitRoomCode() {
-  roomCode = roomCodeTextbox.value;
-  connectToServer();
-}
-
-const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
-function setScreenMode(newMode: ScreenMode) {
-  screenMode = newMode;
-  let loadingMessage = null;
-  let activeDivId = (function() {
-    switch (screenMode) {
-      case ScreenMode.PLAY: return "roomDiv";
-      case ScreenMode.LOGIN: return "loginDiv";
-      case ScreenMode.DISCONNECTED:
-        loadingMessage = "Disconnected...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_SERVER_CONNECT:
-        loadingMessage = "Trying to reach the server...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_CREATE_ROOM:
-        loadingMessage = "Waiting for a new room...";
-        return "loadingDiv";
-      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
-        loadingMessage = "Checking room code...";
-        return "loadingDiv";
-      default: programmerError();
-    }
-  })();
-  ["roomDiv", "loginDiv", "loadingDiv"].forEach(function(divId) {
-    setDivVisible(document.getElementById(divId) as HTMLDivElement, divId === activeDivId);
-  });
-  if (activeDivId === "loginDiv") roomCodeTextbox.focus();
-  loadingMessageDiv.textContent = loadingMessage != null ? loadingMessage : "Please wait...";
-}
+import {
+  sendMessage, getRoomCode,
+  getMyUserId, getMyUserRole,
+} from "./connection.js";
+import {
+  clamp, euclideanMod, operatorCompare, programmerError,
+} from "./math.js";
+import {
+  UserInfo, UserId, MakeAMoveArgs, DbEntry, DbEntryId, RoomState, ObjectState, ImagePath, ObjectId,
+} from "./protocol.js";
+import {
+  setScreenMode, ScreenMode,
+  canMoveLockedObjects,
+  closeDialog, isDialogOpen, setOverlayZ, toggleHelp,
+} from "./ui_layout.js";
 
 const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
 const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
-
-let usersById: {[index: UserId]: UserInfo} = {};
 
 const LOADING = "<loading>";
 interface Size {width: number, height: number}
@@ -194,8 +34,11 @@ let hiderContainers: ObjectState[] = [];
 let changeHistory: MakeAMoveArgs[] = [];
 let futureChanges: MakeAMoveArgs[] = [];
 
-function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
-  database = _database;
+export function getRoles() {
+  return (gameDefinition ?? programmerError()).roles;
+}
+export function initGame(newDatabase: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
+  database = newDatabase;
   databaseById = {};
   database.forEach(function(closetObject) {
     databaseById[closetObject.id] = closetObject;
@@ -223,7 +66,7 @@ function initGame(_database: DbEntry[], game: RoomState, history: MakeAMoveArgs[
     makeAMove(move, false);
   });
 
-  roomCodeSpan.textContent = roomCode;
+  roomCodeSpan.textContent = getRoomCode();
 
   checkForDoneLoading();
 }
@@ -264,11 +107,15 @@ function checkForDoneLoading() {
     if (imageUrlToSize[url] === LOADING) return; // not done yet.
   }
   // all done loading
-  getObjects().forEach(object => render(object, false));
+  renderAllObjects();
   renderOrder();
   resizeTableToFitEverything();
   fixFloatingThingZ();
 }
+export function renderAllObjects() {
+  getObjects().forEach(object => render(object, false));
+}
+
 function makeObject(id: ObjectId, prototypeId: DbEntryId, x: number, y: number, z: number, faceIndex: number): ObjectState {
   let objectDefinition = databaseById[prototypeId];
   if (objectDefinition == null) programmerError("prototypeId not found: " + prototypeId);
@@ -335,16 +182,15 @@ function deleteDiv(div: HTMLDivElement) {
   tableDiv.removeChild(div);
 }
 
-function deleteTableAndEverything() {
+export function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
   database = null;
   databaseById = {};
   gameDefinition = null;
   objectsById = {};
-  usersById = {};
   selectedObjectIdToNewProps = {};
-  consumeNumberModifier();
+  clearNumberBuffer();
   // leave the image cache alone
 }
 function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectTempProps}): number {
@@ -357,13 +203,13 @@ function findMaxZ(excludingSelection?: {[index: ObjectId]: ObjectState | ObjectT
   });
   return maxZ ?? 0;
 }
-function fixFloatingThingZ() {
+export function fixFloatingThingZ() {
   renderExaminingObjects();
   let z = findMaxZ(examiningObjectsById) + Object.keys(examiningObjectsById).length;
   z++;
   hiderContainers.forEach(function(object) {
     let objectDiv = getObjectDiv(object.id);
-    if (object.visionWhitelist.indexOf(myUser!.role) === -1) {
+    if (object.visionWhitelist.indexOf(getMyUserRole()) === -1) {
       // blocked
       objectDiv.style.zIndex = String(z++);
     } else {
@@ -371,11 +217,7 @@ function fixFloatingThingZ() {
       objectDiv.style.zIndex = String(object.z);
     }
   });
-  topRightDiv .style.zIndex = String(z++);
-  helpDiv     .style.zIndex = String(z++);
-  closetDiv   .style.zIndex = String(z++);
-  modalMaskDiv.style.zIndex = String(z++);
-  editUserDiv .style.zIndex = String(z++);
+  setOverlayZ(z);
 }
 
 enum DragMode {
@@ -384,6 +226,7 @@ enum DragMode {
   MOVE_SELECTION,
 }
 let draggingMode = DragMode.NONE;
+export function isDraggingAnything() { return draggingMode !== DragMode.NONE; }
 
 let rectangleSelectStartX = 0;
 let rectangleSelectStartY = 0;
@@ -419,7 +262,7 @@ function onObjectMouseDown(event: MouseEvent) {
   if (examiningMode !== ExamineMode.NONE) return;
   let objectDiv = event.currentTarget as HTMLDivElement;
   let object = objectsById[objectDiv.dataset.id as ObjectId];
-  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // click thee behind me, satan
+  if (isObjectLocked(object)) return; // click thee behind me, satan
   event.preventDefault();
   event.stopPropagation();
 
@@ -454,7 +297,7 @@ function onObjectMouseMove(event: MouseEvent) {
   if (draggingMode != DragMode.NONE) return;
   let objectDiv = event.currentTarget as HTMLDivElement;
   let object = objectsById[objectDiv.dataset.id as ObjectId];
-  if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
+  if (isObjectLocked(object)) return;
   setHoverObject(object);
 }
 function onObjectMouseOut(event: MouseEvent) {
@@ -509,7 +352,7 @@ document.addEventListener("mousemove", function(event) {
       if (minY > maxY) { let tmp = maxY; maxY = minY; minY = tmp; }
       let newSelectedObjects: ObjectState[] = [];
       getObjects().forEach(function(object) {
-        if (object.locked && !moveLockedObjectsModeCheckbox.checked) return;
+        if (isObjectLocked(object)) return;
         if (object.x > maxX) return;
         if (object.y > maxY) return;
         if (object.x + object.width  < minX) return;
@@ -648,11 +491,11 @@ function renderAndMaybeCommitSelection(selection: {[index: ObjectId]: ObjectTemp
   resizeTableToFitEverything();
 
   // it's too late to use this
-  consumeNumberModifier();
+  clearNumberBuffer();
 }
 function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
   let move: any[] = []; // TODO
-  move.push(myUser!.id);
+  move.push(getMyUserId());
   for (let id in selection) {
     let object = objectsById[id];
     let newProps = selection[id];
@@ -729,7 +572,7 @@ function getModifierMask(event: MouseEvent | KeyboardEvent) {
   );
 }
 document.addEventListener("keydown", function(event: KeyboardEvent) {
-  if (dialogIsOpen) {
+  if (isDialogOpen()) {
     if (event.keyCode === 27) closeDialog();
     return;
   }
@@ -748,7 +591,7 @@ document.addEventListener("keydown", function(event: KeyboardEvent) {
       if (modifierMask === 0 && accordionMouseStartX == null) { groupSelection(); startAccordion(); isGKeyDown = true; break; }
       return;
     case 27: // Escape
-      if (modifierMask === 0 && numberTypingBuffer.length > 0) { consumeNumberModifier(); break; }
+      if (modifierMask === 0 && numberTypingBuffer.length > 0) { clearNumberBuffer(); break; }
       if (modifierMask === 0 && draggingMode === DragMode.MOVE_SELECTION) { cancelMove(); break; }
       if (modifierMask === 0 && draggingMode === DragMode.NONE)           { setSelectedObjects([]); break; }
       return;
@@ -873,7 +716,7 @@ function deleteSelection() {
     deleteObject(object.id);
   });
   if (move.length > 0) {
-    move.unshift(myUser!.id);
+    move.unshift(getMyUserId());
     sendMessage({cmd:"makeAMove", args:move});
     pushChangeToHistory(move);
   }
@@ -983,7 +826,7 @@ function examineMulti() {
     let hoverWidth  = hoverObject.width;
     let hoverHeight = hoverObject.height;
     getObjects().forEach(function(object) {
-      if (object.locked && !moveLockedObjectsModeCheckbox.checked) return; // don't look at me
+      if (isObjectLocked(object)) return; // don't look at me
       if (object.x >= hoverX   + hoverWidth)    return;
       if (object.y >= hoverY   + hoverHeight)   return;
       if (hoverX   >= object.x + object.width)  return;
@@ -1008,6 +851,9 @@ function unexamine() {
   }
   renderOrder();
 }
+function isObjectLocked(object: ObjectState): boolean {
+  return object.locked && !canMoveLockedObjects();
+}
 
 let numberTypingBuffer = "";
 function typeNumber(numberValue: number) {
@@ -1023,53 +869,12 @@ function consumeNumberModifier(): number | null {
   return result;
 }
 function clearNumberBuffer() {
+  if (numberTypingBuffer.length === 0) return;
   numberTypingBuffer = "";
   renderNumberBuffer();
 }
 
-let isHelpShown = true;
-let isHelpMouseIn = false;
-function toggleHelp() {
-  isHelpShown = !isHelpShown;
-  renderHelp();
-}
-const topRightDiv = document.getElementById("topRightDiv") as HTMLDivElement;
-const helpDiv = document.getElementById("helpDiv") as HTMLDivElement;
-helpDiv.addEventListener("mousemove", function() {
-  if (draggingMode !== DragMode.NONE) return;
-  isHelpMouseIn = true;
-  renderHelp();
-});
-helpDiv.addEventListener("mouseout", function() {
-  isHelpMouseIn = false;
-  renderHelp();
-});
-function renderHelp() {
-  if (isHelpShown || isHelpMouseIn) {
-    helpDiv.classList.add("helpExpanded");
-  } else {
-    helpDiv.classList.remove("helpExpanded");
-  }
-}
-
-let showCloset = false;
-
-const closetDiv = document.getElementById("closetDiv") as HTMLDivElement;
-const closetShowHideButton = document.getElementById("closetShowHideButton") as HTMLParagraphElement;
-const closetUl = document.getElementById("closetUl") as HTMLUListElement;
-closetShowHideButton.addEventListener("click", function(event) {
-  event.preventDefault();
-  if (event.button !== 0) return;
-  event.stopPropagation();
-  if (showCloset) {
-    closetUl.innerHTML = "";
-    showCloset = false;
-    return;
-  }
-  showCloset = true;
-  renderCloset();
-});
-function renderCloset() {
+export function renderCloset(closetUl: HTMLUListElement) {
   closetUl.innerHTML = database!.filter(function(closetObject) {
     // TODO: show groups with items
     return closetObject.closetName != null;
@@ -1149,14 +954,14 @@ function makeTemporaryObject(prototypeId: DbEntryId, x: number, y: number, z: nu
 function undo() { undoOrRedo(changeHistory, futureChanges); }
 function redo() { undoOrRedo(futureChanges, changeHistory); }
 function undoOrRedo(thePast: MakeAMoveArgs[], theFuture: MakeAMoveArgs[]) {
-  consumeNumberModifier(); // ignore.
+  clearNumberBuffer();
   if (thePast.length === 0) return;
   let newMove = reverseChange(thePast.pop());
   sendMessage({cmd:"makeAMove", args:newMove});
   theFuture.push(newMove);
 }
 function reverseChange(move: MakeAMoveArgs): MakeAMoveArgs {
-  let newMove: MakeAMoveArgs = [myUser!.id];
+  let newMove: MakeAMoveArgs = [getMyUserId()];
   let i = 0;
   move[i++]; // ignore userId
   while (i < move.length) {
@@ -1229,127 +1034,6 @@ function pushChangeToHistory(change: MakeAMoveArgs) {
 function eventToMouseX(event: MouseEvent, div: HTMLDivElement) { return event.clientX - div.getBoundingClientRect().left; }
 function eventToMouseY(event: MouseEvent, div: HTMLDivElement) { return event.clientY - div.getBoundingClientRect().top; }
 
-const userListUl = document.getElementById("userListUl") as HTMLUListElement;
-function renderUserList() {
-  let userIds = Object.keys(usersById);
-  userIds.sort();
-  userListUl.innerHTML = userIds.map(function(userId) {
-    return (
-      '<li'+(userId === myUser!.id ? ' id="myUserNameLi" title="Click to edit your name/role"' : '')+'>' +
-        sanitizeHtml(usersById[userId].userName) +
-      '</li>');
-  }).join("");
-
-  getObjects().forEach(function(object) {
-    if (object.labelPlayerName === "") return;
-    let userName: string | null = null;
-    if (object.labelPlayerName === myUser!.role) {
-      userName = "You";
-    } else {
-      for (let i = 0; i < userIds.length; i++) {
-        if (usersById[userIds[i]].role === object.labelPlayerName) {
-          userName = usersById[userIds[i]].userName;
-          break;
-        }
-      }
-    }
-    let roleName: string | null = null;
-    for (let i = 0; i < gameDefinition!.roles.length; i++) {
-      if (gameDefinition!.roles[i].id === object.labelPlayerName) {
-        roleName = gameDefinition!.roles[i].name;
-        break;
-      }
-    }
-    let labelText: string | null = null;
-    if (userName != null) {
-      labelText = userName + " ("+roleName+")";
-    } else {
-      labelText = roleName;
-    }
-    let stackHeightDiv = getStackHeightDiv(object.id);
-    stackHeightDiv.textContent = labelText;
-    stackHeightDiv.style.display = "block";
-  });
-  const myUserNameLi = document.getElementById("myUserNameLi") as HTMLLIElement;
-  myUserNameLi.addEventListener("click", showEditUserDialog);
-}
-let dialogIsOpen = false;
-const modalMaskDiv = document.getElementById("modalMaskDiv") as HTMLDivElement;
-modalMaskDiv.addEventListener("mousedown", closeDialog);
-const editUserDiv = document.getElementById("editUserDiv") as HTMLDivElement;
-function showEditUserDialog() {
-  modalMaskDiv.style.display = "block";
-  editUserDiv.style.display = "block";
-
-  yourNameTextbox.value = myUser!.userName;
-  yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + gameDefinition!.roles.map(function(role) {
-    return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
-  }).join("");
-  yourRoleDropdown.value = myUser!.role;
-
-  dialogIsOpen = true;
-  yourNameTextbox.focus();
-  yourNameTextbox.select();
-}
-function closeDialog() {
-  modalMaskDiv.style.display = "none";
-  editUserDiv.style.display = "none";
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-  dialogIsOpen = false;
-}
-const yourNameTextbox = document.getElementById("yourNameTextbox") as HTMLInputElement;
-yourNameTextbox.addEventListener("keydown", function(event) {
-  event.stopPropagation();
-  if (event.keyCode === 13) {
-    setTimeout(function() {
-      submitYourName();
-      closeDialog();
-    }, 0);
-  } else if (event.keyCode === 27) {
-    setTimeout(closeDialog, 0);
-  }
-});
-const submitYourNameButton = document.getElementById("submitYourNameButton") as HTMLInputElement;
-submitYourNameButton.addEventListener("click", submitYourName);
-function submitYourName() {
-  let newName = yourNameTextbox.value;
-  if (newName && newName !== myUser!.userName) {
-    sendMessage({
-      cmd: "changeMyName",
-      args: newName,
-    });
-    // anticipate
-    myUser!.userName = newName;
-    renderUserList();
-  }
-}
-const yourRoleDropdown = document.getElementById("yourRoleDropdown") as HTMLSelectElement;
-yourRoleDropdown.addEventListener("change", function() {
-  setTimeout(function() {
-    let role = yourRoleDropdown.value;
-    sendMessage({
-      cmd: "changeMyRole",
-      args: role,
-    });
-    // anticipate
-    myUser!.role = role;
-    renderUserList();
-    // hide/show objects
-    getObjects().forEach(object => render(object, false));
-    fixFloatingThingZ();
-  }, 0);
-});
-const closeEditUserButton = document.getElementById("closeEditUserButton") as HTMLInputElement;
-closeEditUserButton.addEventListener("click", closeDialog);
-
-const moveLockedObjectsModeCheckbox = document.getElementById("moveLockedObjectsModeCheckbox") as HTMLInputElement;
-moveLockedObjectsModeCheckbox.addEventListener("click", function() {
-  // Prevent keyboard focus from interfering with hotkeys.
-  moveLockedObjectsModeCheckbox.blur();
-});
-
 
 function render(object: ObjectState, isAnimated: boolean) {
   if (object.id in examiningObjectsById) return; // different handling for this
@@ -1371,7 +1055,7 @@ function render(object: ObjectState, isAnimated: boolean) {
       let hiderContainer = hiderContainers[i];
       if (hiderContainer.x <= x+object.width /2 && x+object.width /2 <= hiderContainer.x + hiderContainer.width &&
           hiderContainer.y <= y+object.height/2 && y+object.height/2 <= hiderContainer.y + hiderContainer.height) {
-        if (hiderContainer.visionWhitelist.indexOf(myUser!.role) === -1) {
+        if (hiderContainer.visionWhitelist.indexOf(getMyUserRole()) === -1) {
           // blocked
           let forbiddenFaces = hiderContainer.hideFaces;
           let betterFaceIndex = -1;
@@ -1537,6 +1221,39 @@ function renderOrder() {
     });
   }
 }
+export function renderPlayerLabelObjects(usersById: {[index: UserId]: UserInfo}, userIds: UserId[], myUser: UserInfo) {
+  getObjects().forEach(function(object) {
+    if (object.labelPlayerName === "") return;
+    let userName: string | null = null;
+    if (object.labelPlayerName === myUser.role) {
+      userName = "You";
+    } else {
+      for (let i = 0; i < userIds.length; i++) {
+        if (usersById[userIds[i]].role === object.labelPlayerName) {
+          userName = usersById[userIds[i]].userName;
+          break;
+        }
+      }
+    }
+    let roleName: string | null = null;
+    for (let i = 0; i < gameDefinition!.roles.length; i++) {
+      if (gameDefinition!.roles[i].id === object.labelPlayerName) {
+        roleName = gameDefinition!.roles[i].name;
+        break;
+      }
+    }
+    let labelText: string | null = null;
+    if (userName != null) {
+      labelText = userName + " ("+roleName+")";
+    } else {
+      labelText = roleName;
+    }
+    let stackHeightDiv = getStackHeightDiv(object.id);
+    stackHeightDiv.textContent = labelText;
+    stackHeightDiv.style.display = "block";
+  });
+}
+
 type StackId = string; // rectangle x,y,w,h e.g. "12,34,45,67"
 function getStackId(newProps: ObjectTempProps | ObjectState, object: ObjectState): StackId {
   return [newProps.x, newProps.y, object.width, object.height].join(",");
@@ -1658,147 +1375,12 @@ function getObjects(): ObjectState[] {
 function compareZ(a: {z: number}, b: {z: number}) {
   return operatorCompare(a.z, b.z);
 }
-function operatorCompare(a: number, b: number) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
-function makeWebSocket(): WebSocket {
-  let host = location.host;
-  let pathname = location.pathname;
-  let isHttps = location.protocol === "https:";
-  let match = host.match(/^(.+):(\d+)$/);
-  let defaultPort = isHttps ? 443 : 80;
-  let port = match ? parseInt(match[2], 10) : defaultPort;
-  let hostName = match ? match[1] : host;
-  let wsProto = isHttps ? "wss:" : "ws:";
-  let wsUrl = wsProto + "//" + hostName + ":" + port + pathname;
-  return new WebSocket(wsUrl);
-}
-
-let socket: WebSocket | null = null;
-let isConnected = false;
-function connectToServer() {
-  setScreenMode(ScreenMode.WAITING_FOR_SERVER_CONNECT);
-
-  socket = makeWebSocket();
-  socket.addEventListener('open', onOpen, false);
-  socket.addEventListener('message', onMessage, false);
-  socket.addEventListener('error', timeoutThenCreateNew, false);
-  socket.addEventListener('close', timeoutThenCreateNew, false);
-
-  function onOpen() {
-    isConnected = true;
-    console.log("connected");
-    let roomCodeToSend = roomCode;
-    if (roomCode != null) {
-      roomCodeToSend = roomCode;
-      setScreenMode(ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION);
-    } else {
-      roomCodeToSend = "new";
-      setScreenMode(ScreenMode.WAITING_FOR_CREATE_ROOM);
-    }
-    sendMessage({
-      cmd: "joinRoom",
-      args: {
-        roomCode: roomCodeToSend,
-      },
-    });
-  }
-  function onMessage(event: MessageEvent) {
-    let msg = event.data;
-    if (msg === "keepAlive") return;
-    console.log(msg);
-    let message = JSON.parse(msg) as { cmd: string, args?: any };
-    if (screenMode === ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
-      // nice try
-      disconnect();
-      setScreenMode(ScreenMode.LOGIN);
-      // TODO: show message that says we tried
-      return;
-    }
-    switch (screenMode) {
-      case ScreenMode.WAITING_FOR_CREATE_ROOM:
-      case ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION:
-        if (message.cmd === "joinRoom") {
-          setScreenMode(ScreenMode.PLAY);
-          let args = message.args as JoinRoomArgs;
-          roomCode = args.roomCode;
-          myUser = {
-            id: args.userId,
-            userName: args.userName,
-            role: args.role,
-          };
-          usersById[myUser.id] = myUser;
-          args.users.forEach(function(otherUser) {
-            usersById[otherUser.id] = otherUser;
-          });
-          initGame(args.database, args.game, args.history);
-          renderUserList();
-        } else programmerError();
-        break;
-      case ScreenMode.PLAY:
-        if (message.cmd === "makeAMove") {
-          makeAMove(message.args, true);
-        } else if (message.cmd === "userJoined") {
-          let args = message.args as UserJoinedArgs;
-          usersById[args.id] = {
-            id: args.id,
-            userName: args.userName,
-            role: args.role,
-          };
-          renderUserList();
-        } else if (message.cmd === "userLeft") {
-          let args = message.args as UserLeftArgs;
-          delete usersById[args.id];
-          renderUserList();
-        } else if (message.cmd === "changeMyName") {
-          let args = message.args as ChangeMyNameArgs;
-          usersById[args.id].userName = args.userName;
-          renderUserList();
-        } else if (message.cmd === "changeMyRole") {
-          let args = message.args as ChangeMyRoleArgs;
-          usersById[args.id].role = args.role;
-          renderUserList();
-        }
-        break;
-      default: programmerError();
-    }
-  }
-  function timeoutThenCreateNew() {
-    removeListeners();
-    if (isConnected) {
-      isConnected = false;
-      console.log("disconnected");
-      deleteTableAndEverything();
-      setScreenMode(ScreenMode.DISCONNECTED);
-    }
-    setTimeout(connectToServer, 1000);
-  }
-  function disconnect() {
-    if (socket == null) programmerError();
-    console.log("disconnect");
-    removeListeners();
-    socket.close();
-    isConnected = false;
-  }
-  function removeListeners() {
-    if (socket == null) programmerError();
-    socket.removeEventListener('open', onOpen, false);
-    socket.removeEventListener('message', onMessage, false);
-    socket.removeEventListener('error', timeoutThenCreateNew, false);
-    socket.removeEventListener('close', timeoutThenCreateNew, false);
-  }
-}
-
-function sendMessage(message: object) {
-  if (socket == null) programmerError();
-  socket.send(JSON.stringify(message));
-}
-function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
+export function makeAMove(move: MakeAMoveArgs, shouldRender: boolean) {
   let objectsToRender: ObjectState[] = [];
   let i = 0;
   let userId = move[i++];
-  if (userId === myUser!.id) return;
+  if (userId === getMyUserId()) return;
   while (i < move.length) {
     let actionCode = move[i++];
     switch (actionCode) {
@@ -1869,21 +1451,6 @@ function getStackHeightDiv(id: ObjectId) {
 }
 function getBackgroundDiv(id: ObjectId) {
   return document.getElementById("background-" + id) as HTMLDivElement | null;
-}
-function setDivVisible(div: HTMLDivElement, visible: boolean) {
-  div.style.display = visible ? "block" : "none";
-}
-
-function sanitizeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-}
-function euclideanMod(numerator: number, denominator: number): number {
-  return (numerator % denominator + denominator) % denominator;
-}
-function clamp(n: number, min: number, max: number): number {
-  if (n < min) return min;
-  if (n > max) return max;
-  return n;
 }
 
 // Done defining everything.
