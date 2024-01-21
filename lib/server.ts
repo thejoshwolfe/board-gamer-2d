@@ -1,10 +1,10 @@
-var http = require("http");
-var express = require("express");
-var createGzipStatic = require("connect-static");
-var yawl = require("yawl");
+import http from "http";
+import express from "express";
+import createGzipStatic from "connect-static";
+import yawl from "yawl";
 
-var database = require("./database");
-var defaultRoomState = require("./defaultRoom");
+import database from "./database";
+import defaultRoomState from "./defaultRoom";
 
 function main() {
   var app = express();
