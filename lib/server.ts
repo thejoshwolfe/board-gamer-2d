@@ -1,6 +1,5 @@
 import http from "http";
 import express from "express";
-import createGzipStatic from "connect-static";
 import {WebSocket, WebSocketServer} from "ws";
 
 import database from "./database";
@@ -8,20 +7,17 @@ import defaultRoomState from "./defaultRoom";
 
 function main() {
   var app = express();
-  createGzipStatic({dir:"../public"}, function(err, middleware) {
-    if (err) throw err;
-    app.use(middleware);
-    var httpServer = http.createServer(app);
-    const wss = new WebSocketServer({server: httpServer});
-    // wss.on("error", function(err) {
-    //   console.log("web socket server error:", err.stack);
-    // });
-    wss.on("connection", function(socket) {
-      handleNewSocket(socket);
-    });
-    httpServer.listen(25407, "127.0.0.1", function() {
-      console.log("serving: http://127.0.0.1:25407/");
-    });
+  app.use(express.static("../public"));
+  var httpServer = http.createServer(app);
+  const wss = new WebSocketServer({server: httpServer});
+  wss.on("error", function(err) {
+    console.log("web socket server error:", err);
+  });
+  wss.on("connection", function(socket) {
+    handleNewSocket(socket);
+  });
+  httpServer.listen(25407, "127.0.0.1", function() {
+    console.log("serving: http://127.0.0.1:25407/");
   });
 }
 
@@ -56,7 +52,7 @@ function newRoom() {
 }
 var STALE_ROOM_TIMEOUT = 1*60*60*1000; // 1 hour
 function checkForNoUsers(room: Room) {
-  for (var id in room.usersById) {
+  for (var _id in room.usersById) {
     // nevermind. it's not empty.
     return;
   }
@@ -112,7 +108,6 @@ function handleNewSocket(socket: WebSocket) {
   var user: UserInRoom | null = null;
 
   socket.on("message", function(data, isBinary) {
-    console.log("got message", isBinary, data);
     if (isBinary) throw new Error("no");
     const msg = data.toString();
 
@@ -129,7 +124,6 @@ function handleNewSocket(socket: WebSocket) {
     })();
     var message = parseAndValidateMessage(msg, allowedCommands);
     if (message == null) return;
-    console.log("passed validation");
 
     switch (message.cmd) {
       case "joinRoom":
@@ -216,7 +210,6 @@ function handleNewSocket(socket: WebSocket) {
   });
 
   function disconnect() {
-    console.log("intentionally closing client connection");
     // we initiate a disconnect
     socket.close();
     // and anticipate
@@ -258,7 +251,6 @@ function handleNewSocket(socket: WebSocket) {
 
   function sendMessage(message: any) {
     var msg = JSON.stringify(message);
-    console.log("sending:", msg);
     socket.send(msg);
   }
 
