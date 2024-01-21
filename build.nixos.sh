@@ -1,1 +1,1 @@
-nix-shell --pure -p nodejs --run ./build.sh
+exec nix-shell --pure -p nodejs --run 'exec ./build.sh'

@@ -1,1 +1,1 @@
-npm install && ./node_modules/.bin/tsc
+npm install && exec ./node_modules/.bin/tsc

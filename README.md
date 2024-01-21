@@ -4,10 +4,10 @@
 
 ## Run it locally
 
+Install `node` and `npm`. (For NixOS, see `./*.nixos.sh` for convenience.)
+
 ```
-npm install
-./build.sh
-node lib/server.js
+./run.sh
 ```
 
 To allow external device access: (Note: The security of this project has not been thoroughly audited. Use at your own risk.)
