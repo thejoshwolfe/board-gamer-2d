@@ -11,7 +11,7 @@
     "typescript": "^5.3.3"
   },
   "scripts": {
-    "build": "npm install && npm run build:client && npm run build:server",
+    "build": "npm install --no-audit --no-fund && npm run build:client && npm run build:server",
     "build:client": "cd public && npm run build",
     "build:server": "cd lib && npm run build",
     "run": "cd lib && npm run run"

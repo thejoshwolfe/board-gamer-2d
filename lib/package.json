@@ -9,7 +9,7 @@
     "@types/node": "^20.11.5"
   },
   "scripts": {
-    "build": "npm install && npm exec tsc",
+    "build": "npm install --no-audit --no-fund && npm exec tsc",
     "run": "node server.js"
   }
 }
