@@ -5,6 +5,8 @@ import {WebSocket, WebSocketServer} from "ws";
 import database from "./database";
 import defaultRoomState from "./defaultRoom";
 
+const bindIpAddress = "127.0.0.1";
+
 function main() {
   var app = express();
   app.use(express.static("../public"));
@@ -16,8 +18,8 @@ function main() {
   wss.on("connection", function(socket) {
     handleNewSocket(socket);
   });
-  httpServer.listen(25407, "127.0.0.1", function() {
-    console.log("serving: http://127.0.0.1:25407/");
+  httpServer.listen(25407, bindIpAddress, function() {
+    console.log(`serving: http://${bindIpAddress}:25407/`);
   });
 }
 

@@ -7,27 +7,25 @@
 Install `node` and `npm`. (For NixOS, see `./*.nixos.sh` for convenience.)
 
 ```
-./run.sh
+./build-and-run.sh
 ```
 
 To allow external device access: (Note: The security of this project has not been thoroughly audited. Use at your own risk.)
 
 ```diff
-diff --git a/lib/server.js b/lib/server.js
-index a0d9906..f3e06ac 100644
---- a/lib/server.js
-+++ b/lib/server.js
-@@ -23,8 +23,8 @@ function main() {
-     webSocketServer.on("connection", function(socket) {
-       handleNewSocket(socket);
-     });
--    httpServer.listen(25407, "127.0.0.1", function(err) {
--      console.log("serving: http://127.0.0.1:25407/");
-+    httpServer.listen(25407, "0.0.0.0", function(err) {
-+      console.log("serving: http://0.0.0.0:25407/");
-     });
-   });
- }
+diff --git a/lib/server.ts b/lib/server.ts
+index eedb131..b4f8699 100644
+--- a/lib/server.ts
++++ b/lib/server.ts
+@@ -5,7 +5,7 @@ import {WebSocket, WebSocketServer} from "ws";
+ import database from "./database";
+ import defaultRoomState from "./defaultRoom";
+ 
+-const bindIpAddress = "127.0.0.1";
++const bindIpAddress = "0.0.0.0";
+ 
+ function main() {
+   var app = express();
 ```
 
 ## Status

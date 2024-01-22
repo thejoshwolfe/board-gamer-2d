@@ -192,7 +192,7 @@ function submitRoomCode() {
 const loadingMessageDiv = document.getElementById("loadingMessageDiv") as HTMLDivElement;
 export function setScreenMode(newMode: ScreenMode) {
   screenMode = newMode;
-  let loadingMessage = null;
+  let loadingMessage: string | null = null;
   let activeDivId = (function () {
     switch (screenMode) {
       case ScreenMode.PLAY: return "roomDiv";
