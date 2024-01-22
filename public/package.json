@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "build": "npm install --no-audit --no-fund && npm exec tsc"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUmdGlobalAccess": false,
+
+    "noPropertyAccessFromIndexSignature": false,
+    "noUncheckedIndexedAccess": false,
+
+    "module": "ES2022",
+
+    "removeComments": true,
+    "sourceMap": true,
+
+    "lib": [
+      "ES2018",
+      "DOM"
+    ]
+  },
+  "files": [
+    "client.ts"
+  ]
+}

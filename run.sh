@@ -1,1 +1,1 @@
-./build.sh && exec node lib/server.js
+cd lib && exec node server.js

@@ -1,4 +1,4 @@
-module.exports = [
+export default [
   {
     id: "checkersBoard",
     closetName: "Checkers Board",

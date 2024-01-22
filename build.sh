@@ -1,1 +1,1 @@
-npm install && exec ./node_modules/.bin/tsc
+exec npm run build

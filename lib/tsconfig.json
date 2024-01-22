@@ -14,17 +14,12 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
 
-    "module": "ES2022",
+    "module": "NodeNext",
 
     "removeComments": true,
-    "sourceMap": true,
-
-    "lib": [
-      "ES2018",
-      "DOM"
-    ]
+    "sourceMap": true
   },
   "files": [
-    "public/client.ts"
+    "server.ts"
   ]
 }

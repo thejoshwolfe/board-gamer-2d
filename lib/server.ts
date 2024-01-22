@@ -1,58 +1,47 @@
-var http = require("http");
-var express = require("express");
-var createGzipStatic = require("connect-static");
-var yawl = require("yawl");
+import http from "http";
+import express from "express";
+import {WebSocket, WebSocketServer} from "ws";
 
-var database = require("./database");
-var defaultRoomState = require("./defaultRoom");
+import database from "./database";
+import defaultRoomState from "./defaultRoom";
+
+const bindIpAddress = "127.0.0.1";
 
 function main() {
-  var app = express();
-  createGzipStatic({dir:"public"}, function(err, middleware) {
-    if (err) throw err;
-    app.use(middleware);
-    var httpServer = http.createServer(app);
-    var webSocketServer = yawl.createServer({
-      server: httpServer,
-      allowTextMessages: true,
-      maxFrameSize: 16 * 1024 * 1024, // 16 MB
-      origin: null,
-    });
-    webSocketServer.on("error", function(err) {
-      console.log("web socket server error:", err.stack);
-    });
-    webSocketServer.on("connection", function(socket) {
-      handleNewSocket(socket);
-    });
-    httpServer.listen(25407, "127.0.0.1", function(err) {
-      console.log("serving: http://127.0.0.1:25407/");
-    });
+  const app = express();
+  app.use(express.static("../public"));
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({server: httpServer});
+  wss.on("error", function(err) {
+    console.log("web socket server error:", err);
+  });
+  wss.on("connection", function(socket) {
+    handleNewSocket(socket);
+  });
+  httpServer.listen(25407, bindIpAddress, function() {
+    console.log(`serving: http://${bindIpAddress}:25407/`);
   });
 }
 
-var roomsById = {
-  //"roomCode": {
-  //  id: "roomCode",
-  //  database: database,
-  //  game: roomState,
-  //  usersById: {
-  //    "userId": {
-  //      id: "userId",
-  //      userName: "Josh",
-  //      role: "red",
-  //      socket: socket,
-  //    },
-  //  },
-  //  changeHistory: [
-  //    message, ...
-  //  ],
-  //  unusedTimeoutHandle: null || setTimeout(),
-  //},
-};
+let roomsById: {[index: string]: Room} = {};
+interface Room {
+  id: string,
+  database: any, // TODO
+  game: any, // TODO
+  usersById: {[index: string]: UserInRoom},
+  changeHistory: any[], // TODO
+  unusedTimeoutHandle: NodeJS.Timeout | null,
+}
+interface UserInRoom {
+  id: string,
+  userName: string,
+  role: string,
+  socket: WebSocket,
+}
 
 function newRoom() {
-  var roomState = JSON.parse(JSON.stringify(defaultRoomState));
-  var room = {
+  let roomState = JSON.parse(JSON.stringify(defaultRoomState));
+  let room = {
     id: generateRoomCode(),
     database: database,
     game: roomState,
@@ -63,9 +52,9 @@ function newRoom() {
   roomsById[room.id] = room;
   return room;
 }
-var STALE_ROOM_TIMEOUT = 1*60*60*1000; // 1 hour
-function checkForNoUsers(room) {
-  for (var id in room.usersById) {
+const STALE_ROOM_TIMEOUT = 1*60*60*1000; // 1 hour
+function checkForNoUsers(room: Room) {
+  for (let _id in room.usersById) {
     // nevermind. it's not empty.
     return;
   }
@@ -76,12 +65,12 @@ function checkForNoUsers(room) {
   }, STALE_ROOM_TIMEOUT);
 }
 
-function findAvailableRole(room) {
-  for (var i = 0; i < room.game.roles.length; i++) {
-    var roleId = room.game.roles[i].id;
-    var used = false;
-    for (var userId in room.usersById) {
-      var user = room.usersById[userId];
+function findAvailableRole(room: Room) {
+  for (let i = 0; i < room.game.roles.length; i++) {
+    let roleId = room.game.roles[i].id;
+    let used = false;
+    for (let userId in room.usersById) {
+      let user = room.usersById[userId];
       if (user.role === roleId) {
         used = true;
         break;
@@ -92,9 +81,9 @@ function findAvailableRole(room) {
   return ""; // spectator
 }
 
-function newUser(room, userName, socket) {
-  var role = findAvailableRole(room);
-  var user = {
+function newUser(room: Room, userName: string, socket: WebSocket) {
+  let role = findAvailableRole(room);
+  let user = {
     id: generateUserId(),
     userName: userName,
     role: role,
@@ -109,40 +98,44 @@ function newUser(room, userName, socket) {
   return user;
 }
 
-
-var CLIENT_STATE_DISCONNECTING = 0;
-var CLIENT_STATE_WAITING_FOR_LOGIN = 1;
-var CLIENT_STATE_PLAY = 2;
-function handleNewSocket(socket) {
+enum ClientState {
+  DISCONNECTING,
+  WAITING_FOR_LOGIN,
+  PLAY,
+}
+function handleNewSocket(socket: WebSocket) {
   console.log("web socket connected");
 
-  var clientState = CLIENT_STATE_WAITING_FOR_LOGIN;
-  var room;
-  var user;
+  let clientState = ClientState.WAITING_FOR_LOGIN;
+  let room: Room | null = null;
+  let user: UserInRoom | null = null;
 
-  socket.on("textMessage", function(msg) {
-    if (clientState === CLIENT_STATE_DISCONNECTING) return;
+  socket.on("message", function(data, isBinary) {
+    if (isBinary) throw new Error("no");
+    const msg = data.toString();
+
+    if (clientState === ClientState.DISCONNECTING) return;
     console.log(msg);
-    var allowedCommands = (function() {
+    let allowedCommands = (function() {
       switch (clientState) {
-        case CLIENT_STATE_WAITING_FOR_LOGIN:
+        case ClientState.WAITING_FOR_LOGIN:
           return ["joinRoom"];
-        case CLIENT_STATE_PLAY:
+        case ClientState.PLAY:
           return ["makeAMove", "changeMyName", "changeMyRole"];
-        default: throw asdf;
+        default: programmerError();
       }
     })();
-    var message = parseAndValidateMessage(msg, allowedCommands);
+    let message = parseAndValidateMessage(msg, allowedCommands);
     if (message == null) return;
 
     switch (message.cmd) {
-      case "joinRoom":
-        var roomCode = message.args.roomCode;
+      case "joinRoom": {
+        let roomCode = message.args.roomCode;
         if (roomCode === "new") {
           room = newRoom();
           user = newUser(room, "Creator", socket);
         } else {
-          var possibleRoom = roomsById[roomCode];
+          let possibleRoom = roomsById[roomCode];
           if (possibleRoom == null) {
             // sorry buddy
             sendMessage({cmd:"badRoomCode"});
@@ -153,17 +146,17 @@ function handleNewSocket(socket) {
           room = possibleRoom;
           user = newUser(room, "Anonymous", socket);
         }
-        var users = [];
-        for (var id in room.usersById) {
+        let users = [];
+        for (let id in room.usersById) {
           if (id === user.id) continue;
-          var otherUser = room.usersById[id];
+          let otherUser = room.usersById[id];
           users.push({
             id:       otherUser.id,
             userName: otherUser.userName,
             role:     otherUser.role,
           });
           // nice to meet you
-          otherUser.socket.sendText(JSON.stringify({cmd:"userJoined", args:{
+          otherUser.socket.send(JSON.stringify({cmd:"userJoined", args:{
             id:       user.id,
             userName: user.userName,
             role:     user.role,
@@ -179,38 +172,45 @@ function handleNewSocket(socket) {
           history:  room.changeHistory,
           users:    users,
         }});
-        clientState = CLIENT_STATE_PLAY;
+        clientState = ClientState.PLAY;
         break;
-      case "makeAMove":
-        msg = JSON.stringify(message);
-        for (var otherId in room.usersById) {
+      }
+      case "makeAMove": {
+        if (!(user != null && room != null)) programmerError();
+        let msg = JSON.stringify(message);
+        for (let otherId in room.usersById) {
           if (otherId === user.id) continue;
-          room.usersById[otherId].socket.sendText(msg);
+          room.usersById[otherId].socket.send(msg);
         }
         room.changeHistory.push(message.args);
         break;
-      case "changeMyName":
-        var newName = message.args;
+      }
+      case "changeMyName": {
+        if (!(user != null && room != null)) programmerError();
+        let newName = message.args;
         user.userName = newName;
-        for (var id in room.usersById) {
+        for (let id in room.usersById) {
           if (id === user.id) continue;
-          room.usersById[id].socket.sendText(JSON.stringify({cmd:"changeMyName", args:{
+          room.usersById[id].socket.send(JSON.stringify({cmd:"changeMyName", args:{
             id:       user.id,
             userName: user.userName,
           }}));
         }
         break;
-      case "changeMyRole":
-        var newRole = message.args;
+      }
+      case "changeMyRole": {
+        if (!(user != null && room != null)) programmerError();
+        let newRole = message.args;
         user.role = newRole;
-        for (var id in room.usersById) {
+        for (let id in room.usersById) {
           if (id === user.id) continue;
-          room.usersById[id].socket.sendText(JSON.stringify({cmd:"changeMyRole", args:{
+          room.usersById[id].socket.send(JSON.stringify({cmd:"changeMyRole", args:{
             id:   user.id,
             role: user.role,
           }}));
         }
         break;
+      }
       default: throw new Error("TODO: handle command: " + message.cmd);
     }
   });
@@ -225,23 +225,24 @@ function handleNewSocket(socket) {
     console.log("web socket error:", err.stack);
     handleDisconnect();
   });
-  socket.on('close', function() {
-    console.log("web socket client disconnected");
+  socket.on("close", function(code, reason) {
+    console.log("web socket client disconnected:", code, JSON.stringify(String(reason)));
     handleDisconnect();
   });
-  var keepAliveHandle = setInterval(function() {
+  let keepAliveHandle: NodeJS.Timeout | null = setInterval(function() {
     try {
-      socket.sendText("keepAlive");
+      socket.send("keepAlive");
     } catch (e) {}
   }, 10 * 1000);
   function handleDisconnect() {
-    clientState = CLIENT_STATE_DISCONNECTING;
+    clientState = ClientState.DISCONNECTING;
     if (user != null) {
+      if (room == null) programmerError();
       // see you guys later
-      for (var id in room.usersById) {
+      for (let id in room.usersById) {
         if (id === user.id) continue;
-        var otherUser = room.usersById[id];
-        otherUser.socket.sendText(JSON.stringify({cmd:"userLeft", args:{id: user.id}}));
+        let otherUser = room.usersById[id];
+        otherUser.socket.send(JSON.stringify({cmd:"userLeft", args:{id: user.id}}));
       }
       delete room.usersById[user.id];
       checkForNoUsers(room);
@@ -254,14 +255,15 @@ function handleNewSocket(socket) {
     }
   }
 
-  function sendMessage(message) {
-    var msg = JSON.stringify(message);
-    socket.sendText(msg);
+  function sendMessage(message: any) {
+    let msg = JSON.stringify(message);
+    socket.send(msg);
   }
 
-  function parseAndValidateMessage(msg, allowedCommands) {
+  function parseAndValidateMessage(msg: string, allowedCommands: string[]) {
+    let message;
     try {
-      var message = JSON.parse(msg);
+      message = JSON.parse(msg);
     } catch (e) {
       return failValidation(e);
     }
@@ -274,40 +276,45 @@ function handleNewSocket(socket) {
     };
     if (allowedCommands.indexOf(message.cmd) === -1) return failValidation("invalid command", message.cmd);
     switch (message.cmd) {
-      case "createRoom":
+      case "createRoom": {
         if (message.args != null) return failValidation("expected no args. got:", message.args);
         delete message.args;
         break;
-      case "joinRoom":
+      }
+      case "joinRoom": {
         message.args = {
           roomCode: message.args.roomCode,
         };
         if (typeof message.args.roomCode !== "string") return failValidation("expected string:", message.args.roomCode);
         // although the room code might be bogus, that's a reasonable mistake, not a malfunction.
         break;
-      case "makeAMove":
-        var move = message.args;
+      }
+      case "makeAMove": {
+        let move = message.args;
         if (!Array.isArray(move)) return failValidation("expected args to be an array");
         break;
-      case "changeMyName":
-        var newName = message.args;
+      }
+      case "changeMyName": {
+        let newName = message.args;
         if (typeof newName !== "string") return failValidation("expected string:", newName);
         if (newName.length > 16) newName = newName.substring(0, 16);
         if (newName.length === 0) return failValidation("new name is empty string");
         message.args = newName;
         break;
-      case "changeMyRole":
-        var newRole = message.args;
+      }
+      case "changeMyRole": {
+        let newRole = message.args;
         if (typeof newRole !== "string") return failValidation("expected string:", newRole);
         message.args = newRole;
         break;
+      }
       default: throw new Error("TODO: handle command: " + message.cmd);
     }
 
     // seems legit
     return message;
 
-    function failValidation(blurb, offendingValue) {
+    function failValidation(blurb: string | any, offendingValue?: any) {
       if (arguments.length >= 2) {
         if (typeof offendingValue === "string") {
           // make whitespace easier to see
@@ -322,21 +329,22 @@ function handleNewSocket(socket) {
   }
 }
 
-var roomCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const roomCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function generateRoomCode() {
   return generateFromAlphabet(5, roomCodeAlphabet);
 }
-var idAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const idAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 function generateUserId() {
   return generateFromAlphabet(8, idAlphabet);
 }
-function generateFromAlphabet(length, alphabet) {
-  var result = "";
-  for (var i = 0; i < length; i++) {
-    var letter = alphabet[Math.floor(Math.random() * alphabet.length)];
+function generateFromAlphabet(length: number, alphabet: string) {
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    let letter = alphabet[Math.floor(Math.random() * alphabet.length)];
     result += letter;
   }
   return result;
 }
+function programmerError(msg?: string): never { throw new Error(msg); }
 
 main();

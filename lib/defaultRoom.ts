@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   roles: [
     { id: "red",   name: "Red",   },
     { id: "black", name: "Black", },
