@@ -146,7 +146,7 @@ function handleNewSocket(socket: WebSocket) {
           room = possibleRoom;
           user = newUser(room, "Anonymous", socket);
         }
-        let users = [];
+        let users: any[] = [];
         for (let id in room.usersById) {
           if (id === user.id) continue;
           let otherUser = room.usersById[id];
