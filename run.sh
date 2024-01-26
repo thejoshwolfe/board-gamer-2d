@@ -1,1 +1,1 @@
-cd lib && exec node server.js
+cd src/server && exec node server.js

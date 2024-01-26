@@ -7,7 +7,7 @@ import {
 } from "./math.js";
 import {
   UserInfo, UserId, MakeAMoveArgs, DbEntry, DbEntryId, RoomState, ObjectState, ImagePath, ObjectId,
-} from "./protocol.js";
+} from "../shared/protocol.js";
 import {
   setScreenMode, ScreenMode,
   canMoveLockedObjects,

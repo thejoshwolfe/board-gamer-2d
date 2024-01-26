@@ -14,11 +14,12 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
 
-    "module": "ES2022",
-
     "removeComments": true,
     "sourceMap": true,
 
+    "rootDir": "..",
+    "outDir": "../../public",
+    "module": "ES2022",
     "lib": [
       "ES2018",
       "DOM"

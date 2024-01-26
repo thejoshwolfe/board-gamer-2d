@@ -3,7 +3,7 @@ import {
 } from "./connection.js";
 import {
   UserInfo, UserId,
-} from "./protocol.js";
+} from "../shared/protocol.js";
 import {
   fixFloatingThingZ, renderAllObjects, renderPlayerLabelObjects,
   getRoles,

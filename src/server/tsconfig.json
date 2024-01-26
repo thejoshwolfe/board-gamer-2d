@@ -14,10 +14,10 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
 
-    "module": "NodeNext",
-
     "removeComments": true,
-    "sourceMap": true
+    "sourceMap": true,
+
+    "module": "NodeNext"
   },
   "files": [
     "server.ts"
