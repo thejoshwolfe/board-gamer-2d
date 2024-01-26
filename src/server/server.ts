@@ -1,9 +1,11 @@
 import http from "http";
 import express from "express";
 import {WebSocket, WebSocketServer} from "ws";
+import jsonschema from "jsonschema";
 
 import database from "./database.js";
 import defaultRoomState from "./defaultRoom.js";
+import {protocolSchema} from "../shared/protocol.js";
 
 const bindIpAddress = "127.0.0.1";
 
@@ -115,7 +117,6 @@ function handleNewSocket(socket: WebSocket) {
     const msg = data.toString();
 
     if (clientState === ClientState.DISCONNECTING) return;
-    console.log(msg);
     let allowedCommands = (function() {
       switch (clientState) {
         case ClientState.WAITING_FOR_LOGIN:
@@ -267,6 +268,17 @@ function handleNewSocket(socket: WebSocket) {
     } catch (e) {
       return failValidation(e);
     }
+    let res = jsonschema.validate(message, protocolSchema, {
+      required: true,
+      nestedErrors: true,
+    });
+    if (!res.valid) {
+      console.log("client message fails validation:", message);
+      console.log(res.toString() + "---");
+      return null;
+    }
+    // TODO: return message;
+
     // TODO: rethink validation so that it only protects the server, not other clients
     if (typeof message != "object") return failValidation("JSON root data type expected to be object");
     // ignore all unexpected fields.

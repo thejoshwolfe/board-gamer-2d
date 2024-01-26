@@ -97,3 +97,9 @@ export type UserId = string;
 export type RoleId = string;
 export type ColorWithParameterizedAlpha = string; // e.g. "rgba(255,0,0,$alpha)"
 export type ObjectId = string;
+
+export const protocolSchema = {
+  // TODO
+  type: "object",
+  additionalProperties: false,
+};
