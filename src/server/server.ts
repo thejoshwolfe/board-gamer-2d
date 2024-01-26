@@ -2,14 +2,14 @@ import http from "http";
 import express from "express";
 import {WebSocket, WebSocketServer} from "ws";
 
-import database from "./database";
-import defaultRoomState from "./defaultRoom";
+import database from "./database.js";
+import defaultRoomState from "./defaultRoom.js";
 
 const bindIpAddress = "127.0.0.1";
 
 function main() {
   const app = express();
-  app.use(express.static("../public"));
+  app.use(express.static("../../public"));
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({server: httpServer});
   wss.on("error", function(err) {

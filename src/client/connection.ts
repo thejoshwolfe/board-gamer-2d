@@ -6,7 +6,7 @@ import {
 import {
   UserInfo, UserId,
   JoinRoomArgs, UserJoinedArgs, UserLeftArgs, ChangeMyNameArgs, ChangeMyRoleArgs, RoleId,
-} from "./protocol.js";
+} from "../shared/protocol.js";
 import {
   ScreenMode, getScreenMode, setScreenMode,
   renderUserList,
