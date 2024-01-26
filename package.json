@@ -11,7 +11,8 @@
     "typescript": "^5.3.3"
   },
   "scripts": {
-    "build": "npm install --no-audit --no-fund && npm run build:client && npm run build:server",
+    "build": "npm install --no-audit --no-fund && npm run build:shared && npm run build:client && npm run build:server",
+    "build:shared": "cd src/shared && npm run build",
     "build:client": "cd src/client && npm run build",
     "build:server": "cd src/server && npm run build",
     "run": "cd src/server && npm run run"

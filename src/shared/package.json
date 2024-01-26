@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "dependencies": {
+    "json-schema-to-typescript": "^13.1.2",
+    "jsonschema": "^1.4.1"
+  },
+  "scripts": {
+    "build": "npm install --no-audit --no-fund && npm exec tsc && node --eval 'import(\"./schema.js\").then(({protocolSchema}) => require(\"json-schema-to-typescript\").compile(protocolSchema, \"ProtocolMessage\").then(console.log))' > schema.d.ts"
+  }
+}

@@ -5,7 +5,7 @@ import jsonschema from "jsonschema";
 
 import database from "./database.js";
 import defaultRoomState from "./defaultRoom.js";
-import {protocolSchema} from "../shared/protocol.js";
+import { protocolSchema } from "../shared/schema.js";
 
 const bindIpAddress = "127.0.0.1";
 
