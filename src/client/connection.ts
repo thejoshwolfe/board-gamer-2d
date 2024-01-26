@@ -81,8 +81,8 @@ export function connectToServer(newRoomCode: string | null) {
   function onMessage(event: MessageEvent) {
     let msg = event.data;
     if (msg === "keepAlive") return;
-    console.log(msg);
     let message = JSON.parse(msg) as { cmd: string, args?: any };
+    console.log(message);
     let screenMode = getScreenMode();
     if (screenMode === ScreenMode.WAITING_FOR_ROOM_CODE_CONFIRMATION && message.cmd === "badRoomCode") {
       // nice try

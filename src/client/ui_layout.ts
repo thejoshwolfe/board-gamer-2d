@@ -125,21 +125,16 @@ function renderHelp() {
 }
 
 let showCloset = false;
+export function shouldShowCloset() { return showCloset; }
 
 const closetDiv = document.getElementById("closetDiv") as HTMLDivElement;
 const closetShowHideButton = document.getElementById("closetShowHideButton") as HTMLParagraphElement;
-const closetUl = document.getElementById("closetUl") as HTMLUListElement;
 closetShowHideButton.addEventListener("click", function(event) {
   event.preventDefault();
   if (event.button !== 0) return;
   event.stopPropagation();
-  if (showCloset) {
-    closetUl.innerHTML = "";
-    showCloset = false;
-    return;
-  }
-  showCloset = true;
-  renderCloset(closetUl);
+  showCloset = !showCloset;
+  renderCloset();
 });
 
 export function setOverlayZ(z: number) {

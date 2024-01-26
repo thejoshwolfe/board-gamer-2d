@@ -11,8 +11,9 @@ import {
 import {
   setScreenMode, ScreenMode,
   canMoveLockedObjects,
-  closeDialog, isDialogOpen, setOverlayZ, toggleHelp,
+  closeDialog, isDialogOpen, setOverlayZ, toggleHelp, shouldShowCloset,
 } from "./ui_layout.js";
+import "./create.js";
 
 const tableDiv = document.getElementById("tableDiv") as HTMLDivElement;
 const roomCodeSpan = document.getElementById("roomCodeSpan") as HTMLSpanElement;
@@ -22,7 +23,6 @@ interface Size {width: number, height: number}
 let imageUrlToSize: {[index: string]: Size | typeof LOADING} = {};
 
 let gameDefinition: RoomState | null = null;
-let database: DbEntry[] | null = null;
 let databaseById: {[index: DbEntryId]: DbEntry} = {};
 let objectsById: {[index: ObjectId]: ObjectState} = {};
 
@@ -37,13 +37,10 @@ let futureChanges: MakeAMoveArgs[] = [];
 export function getRoles() {
   return (gameDefinition ?? programmerError()).roles;
 }
-export function initGame(newDatabase: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
-  database = newDatabase;
+export function initGame(database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
   databaseById = {};
-  database.forEach(function(closetObject) {
-    databaseById[closetObject.id] = closetObject;
-    if (closetObject.faces != null) closetObject.faces.forEach(preloadImagePath);
-  });
+  database.forEach(putDbEntry);
+
   gameDefinition = game;
   objectsById = {};
   objectsWithSnapZones = [];
@@ -69,6 +66,10 @@ export function initGame(newDatabase: DbEntry[], game: RoomState, history: MakeA
   roomCodeSpan.textContent = getRoomCode();
 
   checkForDoneLoading();
+}
+export function putDbEntry(closetObject: DbEntry) {
+  databaseById[closetObject.id] = closetObject;
+  if (closetObject.faces != null) closetObject.faces.forEach(preloadImagePath);
 }
 function parseFacePath(path: ImagePath): {url:string, x?:number, y?:number, width?:number, height?:number} {
   let splitIndex = path.indexOf("#");
@@ -185,7 +186,6 @@ function deleteDiv(div: HTMLDivElement) {
 export function deleteTableAndEverything() {
   closeDialog();
   tableDiv.innerHTML = "";
-  database = null;
   databaseById = {};
   gameDefinition = null;
   objectsById = {};
@@ -873,11 +873,19 @@ function clearNumberBuffer() {
   renderNumberBuffer();
 }
 
-export function renderCloset(closetUl: HTMLUListElement) {
-  closetUl.innerHTML = database!.filter(function(closetObject) {
+const closetUl = document.getElementById("closetUl") as HTMLUListElement;
+export function renderCloset() {
+  if (!shouldShowCloset()) {
+    closetUl.innerHTML = "";
+    return;
+  }
+
+  let closetItems = Object.values(databaseById).filter(function(closetObject) {
     // TODO: show groups with items
     return closetObject.closetName != null;
-  }).map(function(closetObject) {
+  });
+  // TODO: sort?
+  closetUl.innerHTML = closetItems.map(function(closetObject) {
     let id        = closetObject.id;
     let name      = closetObject.closetName!;
     let thumbnail = closetObject.thumbnail       ?? (closetObject.faces ?? programmerError())[0];

@@ -217,6 +217,18 @@ function handleNewSocket(socket: WebSocket) {
         }
         break;
       }
+      case "putDbEntry": {
+        if (clientState !== ClientState.PLAY) throwShenanigan("not now kid");
+        if (!(user != null && room != null)) programmerError();
+        // TODO: block id collisions
+        let closetObject = message.args;
+        database.push(closetObject);
+        for (let id in room.usersById) {
+          if (id === user.id) continue;
+          room.usersById[id].socket.send(JSON.stringify(message));
+        }
+        break;
+      }
       default: throw new Error("TODO: handle command: " + msg);
     }
   }

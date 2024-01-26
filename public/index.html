@@ -163,10 +163,12 @@
       }
     </style>
   </head>
+
   <body>
     <div id="roomDiv" style="display:none;">
       <div id="tableDiv"></div>
       <div id="selectionRectangleDiv" style="position:absolute; display:none; border:4px dotted #aaa; pointer-events: none;"></div>
+
       <div id="helpDiv" class="helpExpanded">
         <p style="font-size: 1.3em;">Help</p>
         <p id="helpContentsDiv" style="margin-top: 1em; display: none;">
@@ -184,6 +186,7 @@
           Number+Click: Draw N objects from the top of a stack.<br>
         </p>
       </div>
+
       <div id="topRightDiv">
         <div id="roomInfoDiv">
           <span style="text-align: center;">Room Code:</span><br><span id="roomCodeSpan" class="roomCode">???</span>
@@ -191,13 +194,17 @@
         </div>
         <div id="someButtonsDiv" style="margin-top: 1em">
           <div><label title="Allow selecting locked objects"><input id="moveLockedObjectsModeCheckbox" type="checkbox" tabindex=-1>🔒🖐🏾</label></div>
+          <div><button id="createButton">Create ✨</button></div>
         </div>
       </div>
+
       <div id="numberBufferDiv" style="display: none;"></div>
+
       <div id="closetDiv">
         <p id="closetShowHideButton" title="Click to show/hide">Closet</p>
         <ul id="closetUl"></ul>
       </div>
+
       <div id="editUserDiv" style="display: none;">
         <p>
           <label>Name: <input id="yourNameTextbox" placeholder="Your name" maxlength=16></label>
@@ -207,6 +214,7 @@
         <p style="text-align: right;"><input id="closeEditUserButton" type="button" value="Close"></p>
       </div>
     </div>
+
     <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt; margin: 15px;">
       <p><input id="createRoomButton" type="button" class="largeTextButon" value="Create a Room"></p>
       <p>
@@ -219,6 +227,7 @@
       <p id="loadingMessageDiv">Please wait...</p>
     </div>
     <div id="modalMaskDiv" style="display: none;"></div>
+
     <script type="module" src="client/client.js"></script>
   </body>
 </head>
