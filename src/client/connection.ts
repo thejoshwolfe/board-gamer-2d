@@ -1,16 +1,9 @@
-import {programmerError} from "./math.js";
-import {
-  initGame, deleteTableAndEverything,
-  makeAMove,
-} from "./client.js";
-import {
-  UserInfo, UserId,
-  JoinRoomArgs, UserJoinedArgs, UserLeftArgs, ChangeMyNameArgs, ChangeMyRoleArgs, RoleId,
-} from "../shared/protocol.js";
-import {
-  ScreenMode, getScreenMode, setScreenMode,
-  renderUserList,
- } from "./ui_layout.js";
+import { programmerError } from "./math.js";
+import { initGame, deleteTableAndEverything, makeAMove } from "./client.js";
+import { ScreenMode, getScreenMode, setScreenMode, renderUserList } from "./ui_layout.js";
+
+import { UserInfo, UserId, JoinRoomArgs, UserJoinedArgs, UserLeftArgs, ChangeMyNameArgs, ChangeMyRoleArgs, RoleId } from "../shared/protocol.js";
+import { ProtocolMessage } from "../shared/generated-schema.js";
 
 let socket: WebSocket | null = null;
 let isConnected = false;
@@ -18,7 +11,7 @@ let roomCode: string | null = null;
 let myUser: UserInfo | null = null;
 let usersById: {[index: UserId]: UserInfo} = {};
 
-export function sendMessage(message: object) {
+export function sendMessage(message: ProtocolMessage) {
   if (socket == null) programmerError();
   socket.send(JSON.stringify(message));
 }
