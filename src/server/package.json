@@ -2,6 +2,7 @@
   "type": "module",
   "dependencies": {
     "express": "^4.18.2",
+    "jsonschema": "^1.4.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {

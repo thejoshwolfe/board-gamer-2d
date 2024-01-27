@@ -494,7 +494,7 @@ function renderAndMaybeCommitSelection(selection: {[index: ObjectId]: ObjectTemp
   clearNumberBuffer();
 }
 function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
-  let move: any[] = []; // TODO
+  let move: (string | number)[] = [];
   move.push(getMyUserId());
   for (let id in selection) {
     let object = objectsById[id];
@@ -532,14 +532,13 @@ function commitSelection(selection: {[index: ObjectId]: ObjectTempProps}) {
     }
   }
   if (move.length <= 1) return;
-  let message = {
+  sendMessage({
     cmd: "makeAMove",
     args: move,
-  };
-  sendMessage(message);
+  });
   pushChangeToHistory(move);
 }
-function pushObjectProps(move: any[], object: ObjectState) { // TODO
+function pushObjectProps(move: (string | number)[], object: ObjectState) {
   move.push(
     object.id,
     object.prototype,
@@ -549,14 +548,14 @@ function pushObjectProps(move: any[], object: ObjectState) { // TODO
     object.faceIndex);
 }
 const objectPropCount = 6;
-function consumeObjectProps(move: any[], i: number): ObjectState { // TODO
+function consumeObjectProps(move: (string | number)[], i: number): ObjectState {
   let object = makeObject(
-    move[i++], // id
-    move[i++], // prototypeId
-    move[i++], // x
-    move[i++], // y
-    move[i++], // z
-    move[i++], // faceIndex
+    move[i++] as string, // id
+    move[i++] as string, // prototypeId
+    move[i++] as number, // x
+    move[i++] as number, // y
+    move[i++] as number, // z
+    move[i++] as number, // faceIndex
   );
   return object;
 }
@@ -707,7 +706,7 @@ function deleteSelection() {
     partialDeletion = true;
   }
 
-  let move: any[] = []; // TODO
+  let move: (string | number)[] = [];
   objects.forEach(function(object) {
     if (!object.temporary) {
       move.push("d"); // delete

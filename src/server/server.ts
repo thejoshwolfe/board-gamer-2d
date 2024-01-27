@@ -1,9 +1,12 @@
 import http from "http";
 import express from "express";
 import {WebSocket, WebSocketServer} from "ws";
+import jsonschema from "jsonschema";
 
 import database from "./database.js";
 import defaultRoomState from "./defaultRoom.js";
+import { protocolSchema } from "../shared/schema.js";
+import { ProtocolMessage } from "../shared/generated-schema.js";
 
 const bindIpAddress = "127.0.0.1";
 
@@ -111,25 +114,25 @@ function handleNewSocket(socket: WebSocket) {
   let user: UserInRoom | null = null;
 
   socket.on("message", function(data, isBinary) {
-    if (isBinary) throw new Error("no");
-    const msg = data.toString();
-
-    if (clientState === ClientState.DISCONNECTING) return;
-    console.log(msg);
-    let allowedCommands = (function() {
-      switch (clientState) {
-        case ClientState.WAITING_FOR_LOGIN:
-          return ["joinRoom"];
-        case ClientState.PLAY:
-          return ["makeAMove", "changeMyName", "changeMyRole"];
-        default: programmerError();
+    try {
+      if (isBinary) throwShenanigan("received binary message");
+      let msg = data.toString();
+      handleMessage(msg);
+    } catch (e) {
+      if (!(e instanceof Shenanigan)) {
+        console.log(e);
       }
-    })();
-    let message = parseAndValidateMessage(msg, allowedCommands);
-    if (message == null) return;
+      disconnect();
+    }
+  });
+
+  function handleMessage(msg: string) {
+    if (clientState === ClientState.DISCONNECTING) return;
+    let message = parseAndValidateMessage(msg);
 
     switch (message.cmd) {
       case "joinRoom": {
+        if (clientState !== ClientState.WAITING_FOR_LOGIN) throwShenanigan("not now kid");
         let roomCode = message.args.roomCode;
         if (roomCode === "new") {
           room = newRoom();
@@ -176,6 +179,7 @@ function handleNewSocket(socket: WebSocket) {
         break;
       }
       case "makeAMove": {
+        if (clientState !== ClientState.PLAY) throwShenanigan("not now kid");
         if (!(user != null && room != null)) programmerError();
         let msg = JSON.stringify(message);
         for (let otherId in room.usersById) {
@@ -186,6 +190,7 @@ function handleNewSocket(socket: WebSocket) {
         break;
       }
       case "changeMyName": {
+        if (clientState !== ClientState.PLAY) throwShenanigan("not now kid");
         if (!(user != null && room != null)) programmerError();
         let newName = message.args;
         user.userName = newName;
@@ -199,6 +204,7 @@ function handleNewSocket(socket: WebSocket) {
         break;
       }
       case "changeMyRole": {
+        if (clientState !== ClientState.PLAY) throwShenanigan("not now kid");
         if (!(user != null && room != null)) programmerError();
         let newRole = message.args;
         user.role = newRole;
@@ -211,10 +217,14 @@ function handleNewSocket(socket: WebSocket) {
         }
         break;
       }
-      default: throw new Error("TODO: handle command: " + message.cmd);
+      default: throw new Error("TODO: handle command: " + msg);
     }
-  });
+  }
 
+  function throwShenanigan(...msgs: any[]): never {
+    console.log("error handling client message:", ...msgs);
+    throw new Shenanigan();
+  }
   function disconnect() {
     // we initiate a disconnect
     socket.close();
@@ -260,74 +270,28 @@ function handleNewSocket(socket: WebSocket) {
     socket.send(msg);
   }
 
-  function parseAndValidateMessage(msg: string, allowedCommands: string[]) {
+  function parseAndValidateMessage(msg: string): ProtocolMessage {
+    // json.
     let message;
     try {
       message = JSON.parse(msg);
     } catch (e) {
-      return failValidation(e);
-    }
-    // TODO: rethink validation so that it only protects the server, not other clients
-    if (typeof message != "object") return failValidation("JSON root data type expected to be object");
-    // ignore all unexpected fields.
-    message = {
-      cmd: message.cmd,
-      args: message.args,
-    };
-    if (allowedCommands.indexOf(message.cmd) === -1) return failValidation("invalid command", message.cmd);
-    switch (message.cmd) {
-      case "createRoom": {
-        if (message.args != null) return failValidation("expected no args. got:", message.args);
-        delete message.args;
-        break;
-      }
-      case "joinRoom": {
-        message.args = {
-          roomCode: message.args.roomCode,
-        };
-        if (typeof message.args.roomCode !== "string") return failValidation("expected string:", message.args.roomCode);
-        // although the room code might be bogus, that's a reasonable mistake, not a malfunction.
-        break;
-      }
-      case "makeAMove": {
-        let move = message.args;
-        if (!Array.isArray(move)) return failValidation("expected args to be an array");
-        break;
-      }
-      case "changeMyName": {
-        let newName = message.args;
-        if (typeof newName !== "string") return failValidation("expected string:", newName);
-        if (newName.length > 16) newName = newName.substring(0, 16);
-        if (newName.length === 0) return failValidation("new name is empty string");
-        message.args = newName;
-        break;
-      }
-      case "changeMyRole": {
-        let newRole = message.args;
-        if (typeof newRole !== "string") return failValidation("expected string:", newRole);
-        message.args = newRole;
-        break;
-      }
-      default: throw new Error("TODO: handle command: " + message.cmd);
+      throwShenanigan(msg + "\n", e);
     }
 
-    // seems legit
+    // json schema.
+    let res = jsonschema.validate(message, protocolSchema, {
+      required: true,
+      nestedErrors: true,
+    });
+    if (!res.valid) throwShenanigan("client message fails validation:", message, res.toString() + "---");
+
+    console.log(msg);
     return message;
-
-    function failValidation(blurb: string | any, offendingValue?: any) {
-      if (arguments.length >= 2) {
-        if (typeof offendingValue === "string") {
-          // make whitespace easier to see
-          offendingValue = JSON.stringify(offendingValue);
-        }
-        console.log("message failed validation:", blurb, offendingValue);
-      } else {
-        console.log("message failed validation:", blurb);
-      }
-      return null;
-    }
   }
 }
+class Shenanigan extends Error {}
+
 
 const roomCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function generateRoomCode() {

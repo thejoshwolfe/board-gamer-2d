@@ -1,0 +1,12 @@
+{
+  "type": "module",
+  "dependencies": {
+    "jsonschema": "^1.4.1"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^13.1.2"
+  },
+  "scripts": {
+    "build": "npm install --no-audit --no-fund && npm exec tsc && node generate-typescript-interfaces.js"
+  }
+}
