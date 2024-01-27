@@ -20,6 +20,6 @@
     "module": "NodeNext"
   },
   "files": [
-    "schema.ts"
+    "schema.ts", "generate-typescript-interfaces.ts"
   ]
 }
