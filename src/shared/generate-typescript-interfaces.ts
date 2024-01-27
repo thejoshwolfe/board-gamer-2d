@@ -2,7 +2,7 @@ import {writeFileSync, statSync, readFileSync} from "fs";
 
 const selfPath = "generate-typescript-interfaces.js"; // we don't have __filename for some reason.
 const inPath = "schema.js";
-const outPath = "schema.d.ts";
+const outPath = "generated-schema.d.ts";
 const cachePath = "schema.cache.json";
 
 let cache: {[index: string]: string} = function() {
