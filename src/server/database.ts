@@ -1,3 +1,4 @@
+import {DbEntry} from "../shared/protocol.js";
 export default [
   {
     id: "checkersBoard",
@@ -163,4 +164,4 @@ export default [
 
   {id:"redScreen",   width:600, height:100, hideFaces:[0], snapZones:[{}], visionWhitelist:["red"  ], backgroundColor:"rgba(255,0,0,$alpha)", labelPlayerName:"red"},
   {id:"blackScreen", width:600, height:100, hideFaces:[0], snapZones:[{}], visionWhitelist:["black"], backgroundColor:"rgba(0,0,0,$alpha)",   labelPlayerName:"black"},
-];
+] as DbEntry[];
