@@ -1,8 +1,10 @@
 import { putDbEntry, renderCloset } from "./client.js";
 import { sendMessage } from "./connection.js";
 
+import { sha1Obj } from "../shared/hashObject.js";
+
 const createButton = document.getElementById("createButton") as HTMLButtonElement;
-createButton.addEventListener("click", function() {
+createButton.addEventListener("click", async function() {
   let text = prompt("Enter the whole JSON, nerd. (TODO: better UI.)", lastEnteredPrompt);
   if (!text) return;
   // Save for later editing in case of an error.
@@ -14,18 +16,18 @@ createButton.addEventListener("click", function() {
   } catch (e) {
     alert(e);
   }
-  console.log(json);
-
   sendMessage({
     cmd: "putDbEntry",
     args: json,
   });
-  putDbEntry(json);
+
+  const hash = await hashObj(json);
+  console.log(hash, json);
+  putDbEntry(hash, json);
   renderCloset();
 });
 
 const example = JSON.stringify({
-  id: "checkersPieceCustom",
   closetName: "Checkers Piece (Nonsense)",
   width: 50,
   height: 50,
@@ -36,3 +38,14 @@ const example = JSON.stringify({
   ],
 });
 let lastEnteredPrompt = example;
+
+async function browserHashFn(data: BufferSource): Promise<ArrayBuffer> {
+  if (window.crypto.subtle == null) {
+    console.error("subtle crypto is not available. is this running in a secure context? (https)");
+  }
+  return window.crypto.subtle.digest("SHA-1", data);
+}
+
+function hashObj(o: object) {
+  return sha1Obj(browserHashFn, o);
+}

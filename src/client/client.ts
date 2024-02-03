@@ -37,9 +37,9 @@ let futureChanges: MakeAMoveArgs[] = [];
 export function getRoles() {
   return (gameDefinition ?? programmerError()).roles;
 }
-export function initGame(database: DbEntry[], game: RoomState, history: MakeAMoveArgs[]) {
-  databaseById = {};
-  database.forEach(putDbEntry);
+export function initGame(theDatabase: {[index: DbEntryId]: DbEntry}, game: RoomState, history: MakeAMoveArgs[]) {
+  databaseById = theDatabase;
+  Object.values(databaseById).forEach(preloadDbEntry);
 
   gameDefinition = game;
   objectsById = {};
@@ -67,8 +67,11 @@ export function initGame(database: DbEntry[], game: RoomState, history: MakeAMov
 
   checkForDoneLoading();
 }
-export function putDbEntry(closetObject: DbEntry) {
-  databaseById[closetObject.id] = closetObject;
+export function putDbEntry(hash: DbEntryId, closetObject: DbEntry) {
+  databaseById[hash] = closetObject;
+  preloadDbEntry(closetObject);
+}
+function preloadDbEntry(closetObject: DbEntry) {
   if (closetObject.faces != null) closetObject.faces.forEach(preloadImagePath);
 }
 function parseFacePath(path: ImagePath): {url:string, x?:number, y?:number, width?:number, height?:number} {
@@ -880,13 +883,12 @@ export function renderCloset() {
     return;
   }
 
-  let closetItems = Object.values(databaseById).filter(function(closetObject) {
+  let closetItems = Object.entries(databaseById).filter(([_id, closetObject]) => {
     // TODO: show groups with items
     return closetObject.closetName != null;
   });
   // TODO: sort?
-  closetUl.innerHTML = closetItems.map(function(closetObject) {
-    let id        = closetObject.id;
+  closetUl.innerHTML = closetItems.map(([id, closetObject]) => {
     let name      = closetObject.closetName!;
     let thumbnail = closetObject.thumbnail       ?? (closetObject.faces ?? programmerError())[0];
     let width     = closetObject.thumbnailWidth  ?? 25;
@@ -914,7 +916,7 @@ function onClosetObjectMouseDown(event: MouseEvent) {
   let closetObject = databaseById[closetId];
   let prototypeIds = closetObject.items;
   if (prototypeIds == null) {
-    prototypeIds = [closetObject.id];
+    prototypeIds = [closetId];
   }
 
   // create temporary objects

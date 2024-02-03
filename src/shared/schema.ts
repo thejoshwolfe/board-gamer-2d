@@ -24,8 +24,6 @@ export const RoomCodeOrNew: Schema = AnyOf(RoomCode, {const: "new"});
 export const EncodedMove = Array(AnyOf({type: "string"}, Int)); // TODO: this string is various id types and move codes.
 
 export const DbItem = {type: "object", additionalProperties: false, properties: {
-  id: DbEntryId,
-
   width: PositiveInt,
   height: PositiveInt,
   faces: Array(ImagePath),
@@ -51,7 +49,7 @@ export const DbItem = {type: "object", additionalProperties: false, properties: 
   visionWhitelist: Array(RoleId),
   labelPlayerName: RoleId,
   backgroundColor: ColorWithParameterizedAlpha,
-}, required: ["id"]};
+}};
 
 export const protocolSchema: Schema = AnyOf(
   { type: "object", additionalProperties: false, properties: {

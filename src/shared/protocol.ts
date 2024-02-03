@@ -1,3 +1,5 @@
+// TODO: move all this into schema.ts in json schema format, import the generated-schema.js instead, then delete this file.
+
 export interface UserJoinedArgs {
   id: UserId,
   userName: string,
@@ -20,7 +22,7 @@ export interface JoinRoomArgs {
   userId:   UserId,
   userName: string,
   role:     RoleId,
-  database: DbEntry[],
+  database: {[index: DbEntryId]: DbEntry},
   game:     RoomState,
   history:  MakeAMoveArgs[],
   users:    UserInfo[],
@@ -34,7 +36,6 @@ export interface UserInfo {
 }
 
 export interface DbEntry {
-  id: DbEntryId,
   // regular game object
   width?: number,
   height?: number,

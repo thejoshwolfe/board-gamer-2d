@@ -13,6 +13,7 @@ const bindIpAddress = "127.0.0.1";
 function main() {
   const app = express();
   app.use(express.static("../../public"));
+  app.use("/src", express.static("../../src")); // source maps and code for development.
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({server: httpServer});
   wss.on("error", function(err) {
@@ -170,7 +171,7 @@ function handleNewSocket(socket: WebSocket) {
           userId:   user.id,
           userName: user.userName,
           role:     user.role,
-          database: database,
+          database: database.index,
           game:     room.game,
           history:  room.changeHistory,
           users:    users,
@@ -222,7 +223,7 @@ function handleNewSocket(socket: WebSocket) {
         if (!(user != null && room != null)) programmerError();
         // TODO: block id collisions
         let closetObject = message.args;
-        database.push(closetObject);
+        database.put(closetObject);
         for (let id in room.usersById) {
           if (id === user.id) continue;
           room.usersById[id].socket.send(JSON.stringify(message));
