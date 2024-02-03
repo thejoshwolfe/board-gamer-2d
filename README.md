@@ -2,7 +2,7 @@
 
 2d multiplayer html5 board game simulator.
 
-## Run it locally
+## Run it for development
 
 Install `node` and `npm`. (For NixOS, see `./*.nixos.sh` for convenience.)
 
@@ -10,7 +10,11 @@ Install `node` and `npm`. (For NixOS, see `./*.nixos.sh` for convenience.)
 ./build-and-run.sh
 ```
 
-To allow external device access: (Note: The security of this project has not been thoroughly audited. Use at your own risk.)
+#### Run it in public mode
+
+Note: The security of this project has not been thoroughly audited. Use at your own risk.
+
+To allow external device access:
 
 ```diff
 diff --git a/lib/server.ts b/lib/server.ts
@@ -27,6 +31,12 @@ index eedb131..b4f8699 100644
  function main() {
    var app = express();
 ```
+
+Also note that if you're not just on localhost, you'll need to put an HTTPS-enabled proxy in front of this app, or figure out how to enable TLS with a patch here. If you are confused why this is necessary, so am I. It seems to be a failed deseign in SubtleCrypto, which provides native sha1 hashing: https://github.com/w3c/webcrypto/issues/28#issuecomment-1173977574 . But don't worry:
+
+> The web in general is moving to being HTTPS-only. It's even easier and cheaper today to request a TLS certificate for any website than it was in 2016, thanks to initiatives like Let's Encrypt. For local applications, something like Electron can be used. For IoT devices, rather than hosting the entire web app on the device, I would recommend hosting a web app (or creating an Electron app), and then communicating from that web app with the IoT devices.
+
+So if you don't like it, it's your own fault, says Big Tech.
 
 ## Status
 
