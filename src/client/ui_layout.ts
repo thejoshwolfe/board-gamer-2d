@@ -29,32 +29,58 @@ export function renderUserList(usersById: {[index: UserId]: UserInfo}, myUser: U
   myUserNameLi.addEventListener("click", showEditUserDialog);
 }
 
-let dialogIsOpen = false;
-export function isDialogOpen() { return dialogIsOpen; }
+enum DialogMode {
+  CLOSED,
+  OPEN,
+  OPEN_WITH_CONFIRMATION_ON_CLOSE,
+}
+let dialogMode = DialogMode.CLOSED;
+export function isDialogOpen() {
+  return dialogMode !== DialogMode.CLOSED;
+}
+
+export enum Dialog {
+  EDIT_USER,
+  CREATE,
+}
+export function openDialog(dialog: Dialog) {
+  setDivVisible(modalMaskDiv, true);
+  switch (dialog) {
+    case Dialog.EDIT_USER:
+      setDivVisible(editUserDiv, true);
+      dialogMode = DialogMode.OPEN;
+      break;
+    case Dialog.CREATE:
+      setDivVisible(createEditorDiv, true);
+      dialogMode = DialogMode.OPEN_WITH_CONFIRMATION_ON_CLOSE;
+      break;
+  }
+}
+export function closeDialog() {
+  setDivVisible(modalMaskDiv, false);
+  setDivVisible(editUserDiv, false);
+  setDivVisible(createEditorDiv, false);
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  dialogMode = DialogMode.CLOSED;
+}
+
 const modalMaskDiv = document.getElementById("modalMaskDiv") as HTMLDivElement;
 modalMaskDiv.addEventListener("mousedown", closeDialog);
 const editUserDiv = document.getElementById("editUserDiv") as HTMLDivElement;
-function showEditUserDialog() {
-  modalMaskDiv.style.display = "block";
-  editUserDiv.style.display = "block";
+const createEditorDiv = document.getElementById("createEditorDiv") as HTMLDivElement;
 
+function showEditUserDialog() {
   yourNameTextbox.value = getMyUserDisplayName();
   yourRoleDropdown.innerHTML = '<option value="">Spectator</option>' + getRoles().map(function(role) {
     return '<option value="'+role.id+'">' + sanitizeHtml(role.name) + '</option>';
   }).join("");
   yourRoleDropdown.value = getMyUserRole();
 
-  dialogIsOpen = true;
+  openDialog(Dialog.EDIT_USER);
   yourNameTextbox.focus();
   yourNameTextbox.select();
-}
-export function closeDialog() {
-  modalMaskDiv.style.display = "none";
-  editUserDiv.style.display = "none";
-  if (document.activeElement instanceof HTMLElement) {
-    document.activeElement.blur();
-  }
-  dialogIsOpen = false;
 }
 const yourNameTextbox = document.getElementById("yourNameTextbox") as HTMLInputElement;
 yourNameTextbox.addEventListener("keydown", function(event) {
@@ -138,11 +164,12 @@ closetShowHideButton.addEventListener("click", function(event) {
 });
 
 export function setOverlayZ(z: number) {
-  topRightDiv .style.zIndex = String(z++);
-  helpDiv     .style.zIndex = String(z++);
-  closetDiv   .style.zIndex = String(z++);
-  modalMaskDiv.style.zIndex = String(z++);
-  editUserDiv .style.zIndex = String(z++);
+  topRightDiv    .style.zIndex = String(z++);
+  helpDiv        .style.zIndex = String(z++);
+  closetDiv      .style.zIndex = String(z++);
+  modalMaskDiv   .style.zIndex = String(z++);
+  editUserDiv    .style.zIndex = String(z++);
+  createEditorDiv.style.zIndex = String(z++);
 }
 
 export enum ScreenMode {
@@ -213,6 +240,10 @@ export function setScreenMode(newMode: ScreenMode) {
   if (activeDivId === "loginDiv") roomCodeTextbox.focus();
   loadingMessageDiv.textContent = loadingMessage != null ? loadingMessage : "Please wait...";
 }
-function setDivVisible(div: HTMLDivElement, visible: boolean) {
-  div.style.display = visible ? "block" : "none";
+export function setDivVisible(div: HTMLDivElement, visible: boolean) {
+  if (visible) {
+    div.classList.remove("hidden");
+  } else {
+    div.classList.add("hidden");
+  }
 }

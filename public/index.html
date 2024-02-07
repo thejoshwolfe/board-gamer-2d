@@ -7,6 +7,9 @@
       body {
         margin: 0px;
       }
+      .hidden {
+        display: none !important;
+      }
       #tableDiv {
         background-color: #0a0;
         position: absolute;
@@ -101,6 +104,13 @@
         background-color: #ccf;
         font-size: 20pt; font-family: monospace; font-weight: bold;
       }
+      #createEditorDiv {
+        position: fixed;
+        left: 50%; top: 50%;
+        transform: translate(-50%, -50%);
+        padding: 0.2em;
+        background-color: #ccf;
+      }
       .gameObject {
         position: absolute;
         background-size: 100% 100%;
@@ -165,9 +175,9 @@
   </head>
 
   <body>
-    <div id="roomDiv" style="display:none;">
+    <div id="roomDiv" class="hidden">
       <div id="tableDiv"></div>
-      <div id="selectionRectangleDiv" style="position:absolute; display:none; border:4px dotted #aaa; pointer-events: none;"></div>
+      <div id="selectionRectangleDiv" class="hidden" style="position:absolute; border:4px dotted #aaa; pointer-events: none;"></div>
 
       <div id="helpDiv" class="helpExpanded">
         <p style="font-size: 1.3em;">Help</p>
@@ -198,14 +208,28 @@
         </div>
       </div>
 
-      <div id="numberBufferDiv" style="display: none;"></div>
+      <div id="createEditorDiv" class="hidden">
+        <label>Closet Name:<input id="createEditorClosteNameTextbox"></label><label>size:<input id="createEditorSizeInput" value="100x100"></label><br>
+        <label>Face:<select id="createEditorFacesDropdown"><option>0</option></select></label>
+        <button id="createEditorMoveFaceUpButton" title="Move face up">⬆️</button><button id="createEditorMoveFaceDownButton" title="Move face down">⬇️</button>
+        <label>Faces:<input id="createEditorNumberOfFacesSpinner" type="number" min=0 max=999 value=1></label>
+        <div id="createEditorPerFaceDiv">
+          <canvas id="createEditorCanvas" width=100 height=100></canvas>
+          <input id="createEditorUploadButton" type="file" multiple>
+        </div>
+        <textarea id="createEditorTextarea">{}</textarea><br>
+        <button id="createEditorSaveButton">Save 💾</button><button id="createEditorCancelButton">Cancel ❌</button>
+        <label>ID:<input id="createEditorIdTextbox" value="0c0d7d8f68c29b8362f0f63865ff7a963526f434" readonly style="width: 5em;"></label><button id="createEditorCopyIdButton" title="Copy id to clipboard">📋</button>
+      </div>
+
+      <div id="numberBufferDiv" class="hidden"></div>
 
       <div id="closetDiv">
         <p id="closetShowHideButton" title="Click to show/hide">Closet</p>
         <ul id="closetUl"></ul>
       </div>
 
-      <div id="editUserDiv" style="display: none;">
+      <div id="editUserDiv" class="hidden">
         <p>
           <label>Name: <input id="yourNameTextbox" placeholder="Your name" maxlength=16></label>
           <input id="submitYourNameButton" type="button" value="Submit">
@@ -215,7 +239,7 @@
       </div>
     </div>
 
-    <div id="loginDiv" style="display: none; text-align: center; font-size: 15pt; margin: 15px;">
+    <div id="loginDiv" class="hidden" style="text-align: center; font-size: 15pt; margin: 15px;">
       <p><input id="createRoomButton" type="button" class="largeTextButon" value="Create a Room"></p>
       <p>
         Join a Room:
@@ -226,7 +250,7 @@
     <div id="loadingDiv">
       <p id="loadingMessageDiv">Please wait...</p>
     </div>
-    <div id="modalMaskDiv" style="display: none;"></div>
+    <div id="modalMaskDiv" class="hidden"></div>
 
     <script type="module" src="client/client.js"></script>
   </body>

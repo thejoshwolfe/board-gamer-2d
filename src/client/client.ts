@@ -11,7 +11,7 @@ import {
 import {
   setScreenMode, ScreenMode,
   canMoveLockedObjects,
-  closeDialog, isDialogOpen, setOverlayZ, toggleHelp, shouldShowCloset,
+  closeDialog, isDialogOpen, setOverlayZ, toggleHelp, shouldShowCloset, setDivVisible,
 } from "./ui_layout.js";
 import "./create.js";
 
@@ -148,8 +148,8 @@ function registerObject(object: ObjectState) {
   if (object.visionWhitelist.length > 0) hiderContainers.push(object);
 
   tableDiv.insertAdjacentHTML("beforeend",
-    '<div id="object-'+object.id+'" data-id="'+object.id+'" class="gameObject" style="display:none;">' +
-      '<div id="stackHeight-'+object.id+'" class="stackHeight" style="display:none;"></div>' +
+    '<div id="object-'+object.id+'" data-id="'+object.id+'" class="gameObject hidden">' +
+      '<div id="stackHeight-'+object.id+'" class="stackHeight hidden"></div>' +
     '</div>'
   );
   let objectDiv = getObjectDiv(object.id);
@@ -159,7 +159,7 @@ function registerObject(object: ObjectState) {
   if (object.backgroundColor !== "") {
     // add a background div
     tableDiv.insertAdjacentHTML("beforeend",
-      '<div id="background-'+object.id+'" class="backgroundObject" style="display:none;"></div>'
+      '<div id="background-'+object.id+'" class="backgroundObject hidden"></div>'
     );
   }
 }
@@ -1110,7 +1110,7 @@ function render(object: ObjectState, isAnimated: boolean) {
   } else {
     programmerError("don't know how to render object");
   }
-  objectDiv.style.display = "block";
+  setDivVisible(objectDiv, true);
 
   if (object.backgroundColor !== "") {
     let backgroundDiv = getBackgroundDiv(object.id) ?? programmerError();
@@ -1124,7 +1124,7 @@ function render(object: ObjectState, isAnimated: boolean) {
     backgroundDiv.style.width  = object.width  + "px";
     backgroundDiv.style.height = object.height + "px";
     backgroundDiv.style.zIndex = String(0);
-    backgroundDiv.style.display = "block";
+    setDivVisible(backgroundDiv, true);
     backgroundDiv.style.backgroundColor = object.backgroundColor.replace(/\$alpha/, "1.0");
   }
 }
@@ -1179,7 +1179,7 @@ function renderExaminingObjects() {
     renderSize(objectDiv, renderWidth, renderHeight);
     objectDiv.style.zIndex = String(maxZ + i + 3);
     let stackHeightDiv = getStackHeightDiv(object.id);
-    stackHeightDiv.style.display = "none";
+    setDivVisible(stackHeightDiv, false);
   }
 }
 function renderSize(objectDiv: HTMLDivElement, renderWidth: number, renderHeight: number) {
@@ -1223,9 +1223,9 @@ function renderOrder() {
       let stackHeightDiv = getStackHeightDiv(idAndZ.id);
       if (i > 0) {
         stackHeightDiv.textContent = String(i + 1);
-        stackHeightDiv.style.display = "block";
+        setDivVisible(stackHeightDiv, true);
       } else {
-        stackHeightDiv.style.display = "none";
+        setDivVisible(stackHeightDiv, false);
       }
     });
   }
@@ -1259,7 +1259,7 @@ export function renderPlayerLabelObjects(usersById: {[index: UserId]: UserInfo},
     }
     let stackHeightDiv = getStackHeightDiv(object.id);
     stackHeightDiv.textContent = labelText;
-    stackHeightDiv.style.display = "block";
+    setDivVisible(stackHeightDiv, true);
   });
 }
 
@@ -1293,18 +1293,18 @@ function renderSelectionRectangle() {
     selectionRectangleDiv.style.top  = (tableDiv.offsetTop  + y) + "px";
     selectionRectangleDiv.style.width  = width  + "px";
     selectionRectangleDiv.style.height = height + "px";
-    selectionRectangleDiv.style.display = "block";
+    setDivVisible(selectionRectangleDiv, true);
   } else {
-    selectionRectangleDiv.style.display = "none";
+    setDivVisible(selectionRectangleDiv, false);
   }
 }
 const numberBufferDiv = document.getElementById("numberBufferDiv") as HTMLDivElement;
 function renderNumberBuffer() {
   if (numberTypingBuffer.length !== 0) {
     numberBufferDiv.textContent = numberTypingBuffer;
-    numberBufferDiv.style.display = "block";
+    setDivVisible(numberBufferDiv, true);
   } else {
-    numberBufferDiv.style.display = "none";
+    setDivVisible(numberBufferDiv, false);
   }
 }
 function resizeTableToFitEverything() {
